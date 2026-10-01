@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ИнвестСигнал — прототип аналитического контура раннего выявления инвестиционных проектов.">
+  <meta name="theme-color" content="#101820">
+  <title>ИнвестСигнал — аналитический контур</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23101820'/%3E%3Cpath d='M15 43V32m11 11V23m11 20V29m11 14V15' stroke='%23d8ff3e' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --ink: #13202b;
+      --muted: #65717d;
+      --muted-2: #8a949e;
+      --paper: #f3f5f6;
+      --white: #ffffff;
+      --line: #dfe4e7;
+      --line-strong: #ccd3d8;
+      --nav: #101820;
+      --nav-soft: #1b2833;
+      --acid: #d8ff3e;
+      --acid-dark: #8aa800;
+      --green: #14845f;
+      --green-soft: #e5f5ef;
+      --amber: #b87913;
+      --amber-soft: #fff3d8;
+      --red: #c14949;
+      --red-soft: #fdeaea;
+      --blue: #386f9c;
+      --blue-soft: #eaf2f8;
+      --shadow: 0 18px 55px rgba(20, 33, 43, .13);
+      --radius: 14px;
+      color-scheme: light;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--paper); }
+    body { margin: 0; color: var(--ink); background: var(--paper); font-size: 16px; line-height: 1.45; }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+      outline: 3px solid rgba(86, 134, 175, .35); outline-offset: 2px;
+    }
+    svg { display: block; }
+    .hidden { display: none !important; }
+
+    .shell { min-height: 100vh; display: grid; grid-template-columns: 236px minmax(0, 1fr); }
+    .sidebar {
+      background: var(--nav); color: #d9e0e5; padding: 24px 16px 18px; display: flex;
+      flex-direction: column; position: sticky; top: 0; height: 100vh; z-index: 20;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 0 9px 27px; color: white; }
+    .brand-mark { width: 34px; height: 34px; border: 1px solid #384956; border-radius: 9px; display: grid; place-items: center; }
+    .brand-bars { height: 18px; display: flex; gap: 3px; align-items: end; }
+    .brand-bars i { display: block; width: 3px; background: var(--acid); border-radius: 3px; }
+    .brand-bars i:nth-child(1) { height: 8px; }
+    .brand-bars i:nth-child(2) { height: 13px; }
+    .brand-bars i:nth-child(3) { height: 18px; }
+    .brand strong { font-size: 1.05rem; letter-spacing: -.02em; }
+    .brand small { display: block; color: #92a0ab; font-size: .78rem; margin-top: 1px; }
+
+    .nav-label { color: #73818c; font-size: .76rem; font-weight: 700; letter-spacing: .1em; padding: 0 12px 9px; text-transform: uppercase; }
+    .nav-list { display: grid; gap: 5px; }
+    .nav-item { width: 100%; border: 0; background: transparent; color: #adbac4; display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: 9px; text-align: left; font-size: .93rem; }
+    .nav-item svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+    .nav-item:hover { background: #17242e; color: white; }
+    .nav-item.active { background: var(--nav-soft); color: white; box-shadow: inset 3px 0 var(--acid); }
+    .nav-item .nav-count { margin-left: auto; min-width: 24px; padding: 1px 7px; border-radius: 999px; background: #2a3945; color: var(--acid); font-size: .76rem; text-align: center; }
+    .sidebar-bottom { margin-top: auto; padding: 15px 8px 4px; border-top: 1px solid #293640; }
+    .sync { display: flex; gap: 9px; align-items: center; color: #95a3ae; font-size: .78rem; }
+    .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--acid); box-shadow: 0 0 0 4px rgba(216, 255, 62, .09); }
+    .profile { display: flex; align-items: center; gap: 10px; margin-top: 17px; }
+    .avatar { width: 34px; height: 34px; border-radius: 50%; background: #2a3a46; color: var(--acid); display: grid; place-items: center; font-size: .78rem; font-weight: 800; }
+    .profile strong { display: block; color: #eef2f4; font-size: .84rem; }
+    .profile small { display: block; color: #84929d; font-size: .72rem; }
+
+    .main { min-width: 0; }
+    .topbar { min-height: 72px; display: flex; align-items: center; gap: 16px; padding: 14px 30px; background: rgba(255,255,255,.92); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 15; backdrop-filter: blur(12px); }
+    .menu-btn { display: none; width: 42px; height: 42px; border: 1px solid var(--line); background: white; border-radius: 10px; place-items: center; }
+    .page-heading { min-width: 0; }
+    .page-heading h1 { margin: 0; font-size: 1.22rem; line-height: 1.2; letter-spacing: -.025em; }
+    .page-heading p { margin: 3px 0 0; color: var(--muted); font-size: .83rem; }
+    .top-actions { margin-left: auto; display: flex; align-items: center; gap: 9px; }
+    .demo-pill { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; color: #6a5a19; background: #fff7d8; border: 1px solid #eadb98; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+    .btn { min-height: 40px; border-radius: 9px; border: 1px solid var(--line-strong); background: white; color: var(--ink); padding: 8px 13px; font-weight: 700; font-size: .86rem; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn:hover { border-color: #9eabb4; background: #fafbfb; }
+    .btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; }
+    .btn-primary { border-color: var(--acid); background: var(--acid); color: #182100; }
+    .btn-primary:hover { background: #cafa17; border-color: #cafa17; }
+    .btn-dark { background: var(--nav); border-color: var(--nav); color: white; }
+    .btn-dark:hover { background: #253642; border-color: #253642; }
+    .btn-danger { border-color: #ebbbbb; color: #a83f3f; background: #fffafa; }
+    .btn-ghost { border-color: transparent; background: transparent; color: var(--muted); }
+
+    .content { padding: 24px 30px 42px; max-width: 1560px; margin: 0 auto; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 20px; }
+    .stat { background: var(--white); border: 1px solid var(--line); border-radius: 12px; padding: 17px 18px; min-width: 0; }
+    .stat-label { color: var(--muted); font-size: .8rem; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .stat-value { font-size: 1.72rem; line-height: 1.1; font-weight: 760; letter-spacing: -.045em; margin-top: 9px; }
+    .stat-note { color: var(--muted-2); font-size: .75rem; margin-top: 5px; }
+    .delta { color: var(--green); font-size: .75rem; background: var(--green-soft); border-radius: 999px; padding: 2px 7px; }
+
+    .workspace { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+    .workspace-head { display: flex; gap: 12px; align-items: center; padding: 16px 17px; border-bottom: 1px solid var(--line); }
+    .workspace-title h2 { font-size: 1.05rem; margin: 0; letter-spacing: -.02em; }
+    .workspace-title p { margin: 3px 0 0; color: var(--muted); font-size: .8rem; }
+    .filters { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .search { position: relative; }
+    .search svg { position: absolute; left: 11px; top: 11px; width: 17px; height: 17px; fill: none; stroke: #7b8790; stroke-width: 2; pointer-events: none; }
+    .search input { width: 230px; min-height: 40px; border: 1px solid var(--line-strong); border-radius: 9px; padding: 8px 10px 8px 35px; color: var(--ink); background: #fbfcfc; }
+    .search input::placeholder { color: #929ca5; }
+    .select { min-height: 40px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fbfcfc; color: var(--ink); padding: 8px 32px 8px 11px; font-size: .86rem; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 920px; }
+    th { padding: 11px 14px; text-align: left; color: var(--muted); background: #f8f9f9; font-size: .74rem; letter-spacing: .035em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+    td { padding: 14px; border-bottom: 1px solid #e8ecee; vertical-align: middle; font-size: .88rem; }
+    tbody tr { cursor: pointer; transition: background .15s ease; }
+    tbody tr:hover { background: #f8faf9; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .company { display: flex; align-items: center; gap: 11px; min-width: 260px; }
+    .company-logo { flex: 0 0 auto; width: 39px; height: 39px; border-radius: 9px; display: grid; place-items: center; color: #263500; background: #ebf9ad; font-size: .76rem; font-weight: 800; letter-spacing: .02em; }
+    .company strong { display: block; font-size: .9rem; }
+    .company small { color: var(--muted); font-size: .76rem; }
+    .signal { max-width: 280px; }
+    .signal strong { display: block; font-size: .86rem; font-weight: 700; }
+    .signal small { color: var(--muted); font-size: .76rem; display: block; margin-top: 2px; }
+    .score { display: flex; align-items: center; gap: 9px; min-width: 118px; }
+    .score-ring { --score: 75; width: 35px; height: 35px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--acid-dark) calc(var(--score) * 1%), #e5e9eb 0); position: relative; }
+    .score-ring::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: white; }
+    .score-ring b { position: relative; z-index: 1; font-size: .69rem; }
+    .score small { color: var(--muted); font-size: .72rem; }
+    .tag { display: inline-flex; align-items: center; white-space: nowrap; padding: 4px 8px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+    .tag-new { color: #285d87; background: var(--blue-soft); }
+    .tag-review { color: #8b5c0d; background: var(--amber-soft); }
+    .tag-approved { color: #0d6b4b; background: var(--green-soft); }
+    .tag-rejected { color: #9c3d3d; background: var(--red-soft); }
+    .tag-exported { color: #5e4d91; background: #f0ebfa; }
+    .urgency { display: flex; align-items: center; gap: 7px; color: var(--muted); }
+    .urgency i { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
+    .urgency.high i { background: var(--red); }
+    .urgency.low i { background: var(--green); }
+    .owner { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .owner .mini-avatar { width: 27px; height: 27px; border-radius: 50%; background: #e8ecef; color: #53616c; display: grid; place-items: center; font-weight: 800; font-size: .67rem; }
+    .more { color: #7c8790; font-size: 1.25rem; text-align: center; }
+    .empty { padding: 60px 20px; text-align: center; color: var(--muted); }
+    .empty strong { display: block; color: var(--ink); margin-bottom: 5px; }
+
+    .section-view { display: none; }
+    .section-view.active { display: block; }
+    .split-grid { display: grid; grid-template-columns: 1.25fr .75fr; gap: 16px; }
+    .panel { background: white; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+    .panel-head { padding: 17px 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+    .panel-head h2 { margin: 0; font-size: 1rem; }
+    .panel-head p { margin: 3px 0 0; font-size: .79rem; color: var(--muted); }
+    .source-list { padding: 5px 18px; }
+    .source-item { display: grid; grid-template-columns: minmax(0,1fr) 110px 90px; gap: 12px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line); }
+    .source-item:last-child { border-bottom: 0; }
+    .source-name { display: flex; gap: 11px; align-items: center; }
+    .source-icon { width: 36px; height: 36px; border-radius: 9px; background: #edf1f3; color: #596773; display: grid; place-items: center; font-size: .8rem; font-weight: 800; }
+    .source-name strong { display: block; font-size: .88rem; }
+    .source-name small { display: block; color: var(--muted); font-size: .76rem; margin-top: 2px; }
+    .health { color: var(--green); font-weight: 700; font-size: .78rem; }
+    .health.warn { color: var(--amber); }
+    .chart-pad { padding: 20px; }
+    .donut-wrap { display: grid; place-items: center; min-height: 220px; }
+    .donut { width: 154px; height: 154px; border-radius: 50%; background: conic-gradient(var(--acid-dark) 0 38%, var(--blue) 38% 62%, var(--amber) 62% 81%, #a891c9 81% 100%); display: grid; place-items: center; }
+    .donut::after { content: "36\Aсигналов"; white-space: pre; text-align: center; display: grid; place-items: center; width: 96px; height: 96px; border-radius: 50%; background: white; font-weight: 800; line-height: 1.2; }
+    .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 14px; }
+    .legend span { color: var(--muted); font-size: .78rem; display: flex; gap: 7px; align-items: center; }
+    .legend i { width: 8px; height: 8px; border-radius: 2px; }
+    .bars { padding: 18px; display: grid; gap: 17px; }
+    .bar-row { display: grid; grid-template-columns: 145px minmax(90px,1fr) 38px; align-items: center; gap: 11px; }
+    .bar-row label { font-size: .81rem; color: var(--muted); }
+    .bar-track { height: 9px; border-radius: 999px; background: #edf0f2; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 999px; background: var(--acid-dark); }
+    .bar-row b { font-size: .82rem; text-align: right; }
+    .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+    .metric-card { background: white; border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+    .metric-card strong { font-size: 1.5rem; letter-spacing: -.04em; }
+    .metric-card span { display: block; color: var(--muted); font-size: .79rem; margin-top: 4px; }
+
+    .overlay { position: fixed; inset: 0; background: rgba(9, 18, 25, .47); z-index: 50; opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+    .overlay.open { opacity: 1; pointer-events: auto; }
+    .drawer { position: fixed; z-index: 60; top: 0; right: 0; height: 100vh; width: min(650px, 100vw); background: white; box-shadow: var(--shadow); transform: translateX(102%); transition: transform .25s ease; display: flex; flex-direction: column; }
+    .drawer.open { transform: translateX(0); }
+    .drawer-head { padding: 22px 24px 18px; border-bottom: 1px solid var(--line); }
+    .drawer-topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .drawer-kicker { color: var(--muted); font-size: .76rem; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; }
+    .icon-btn { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 9px; background: white; display: grid; place-items: center; color: var(--muted); font-size: 1.25rem; }
+    .drawer h2 { margin: 12px 0 3px; font-size: 1.44rem; line-height: 1.2; letter-spacing: -.035em; }
+    .drawer-subtitle { color: var(--muted); font-size: .87rem; }
+    .drawer-summary { margin-top: 15px; padding: 12px 13px; background: #f4f7f0; border-left: 3px solid var(--acid-dark); border-radius: 0 8px 8px 0; color: #3f4b34; font-size: .87rem; }
+    .drawer-body { overflow-y: auto; padding: 20px 24px 30px; }
+    .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+    .detail-cell { padding: 12px; border-right: 1px solid var(--line); background: #fbfcfc; }
+    .detail-cell:last-child { border-right: 0; }
+    .detail-cell span { color: var(--muted); font-size: .71rem; text-transform: uppercase; letter-spacing: .04em; }
+    .detail-cell strong { display: block; margin-top: 3px; font-size: .85rem; }
+    .detail-section { margin-top: 22px; }
+    .detail-section h3 { margin: 0 0 11px; font-size: .93rem; }
+    .score-list { border: 1px solid var(--line); border-radius: 10px; padding: 13px; display: grid; gap: 11px; }
+    .score-factor { display: grid; grid-template-columns: 125px 1fr 32px; gap: 10px; align-items: center; }
+    .score-factor label { font-size: .77rem; color: var(--muted); }
+    .score-factor .bar-track { height: 7px; }
+    .score-factor b { font-size: .76rem; text-align: right; }
+    .evidence-list { display: grid; gap: 10px; }
+    .evidence { border: 1px solid var(--line); border-radius: 10px; padding: 13px; }
+    .evidence-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: .73rem; }
+    .evidence p { margin: 8px 0 0; font-size: .83rem; line-height: 1.5; }
+    .evidence mark { background: #efffb3; color: inherit; padding: 1px 2px; }
+    .recommend { border-radius: 10px; background: var(--nav); color: white; padding: 15px; }
+    .recommend small { color: #92a2ad; font-size: .73rem; text-transform: uppercase; letter-spacing: .06em; }
+    .recommend strong { display: block; margin: 6px 0 5px; font-size: .93rem; }
+    .recommend p { margin: 0; color: #bdc8cf; font-size: .81rem; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .field label { display: block; color: var(--muted); font-size: .75rem; margin-bottom: 5px; font-weight: 700; }
+    .field select, .field input, .field textarea { width: 100%; min-height: 40px; border: 1px solid var(--line-strong); border-radius: 8px; background: white; padding: 8px 10px; color: var(--ink); }
+    .drawer-actions { padding: 14px 24px; border-top: 1px solid var(--line); display: flex; gap: 9px; background: white; }
+    .drawer-actions .btn:first-child { margin-right: auto; }
+
+    .modal { position: fixed; z-index: 70; left: 50%; top: 50%; width: min(520px, calc(100vw - 28px)); background: white; border-radius: 16px; box-shadow: var(--shadow); transform: translate(-50%, -45%) scale(.98); opacity: 0; pointer-events: none; transition: .2s ease; }
+    .modal.open { transform: translate(-50%, -50%) scale(1); opacity: 1; pointer-events: auto; }
+    .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 20px 22px 15px; border-bottom: 1px solid var(--line); }
+    .modal-head h2 { margin: 0; font-size: 1.1rem; }
+    .modal-body { padding: 20px 22px; }
+    .modal-body .field { margin-bottom: 14px; }
+    .modal-body textarea { min-height: 92px; resize: vertical; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 22px 20px; }
+
+    .toast { position: fixed; z-index: 90; right: 20px; bottom: 20px; max-width: 360px; background: var(--nav); color: white; border-radius: 10px; padding: 12px 15px; box-shadow: var(--shadow); transform: translateY(20px); opacity: 0; pointer-events: none; transition: .22s ease; font-size: .86rem; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast strong { color: var(--acid); }
+
+    @media (max-width: 1080px) {
+      .stats { grid-template-columns: 1fr 1fr; }
+      .split-grid { grid-template-columns: 1fr; }
+      .top-actions .demo-pill { display: none; }
+    }
+    @media (max-width: 780px) {
+      .shell { display: block; }
+      .sidebar { position: fixed; inset: 0 auto 0 0; width: 250px; transform: translateX(-102%); transition: transform .22s ease; box-shadow: var(--shadow); }
+      .sidebar.open { transform: translateX(0); }
+      .menu-btn { display: grid; }
+      .topbar { padding: 12px 16px; }
+      .top-actions .btn span { display: none; }
+      .content { padding: 18px 16px 30px; }
+      .workspace-head { align-items: flex-start; flex-direction: column; }
+      .filters { width: 100%; margin: 0; flex-wrap: wrap; }
+      .search { flex: 1 1 220px; }
+      .search input { width: 100%; }
+      .metric-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 520px) {
+      .stats { grid-template-columns: 1fr 1fr; gap: 9px; }
+      .stat { padding: 14px; }
+      .stat-value { font-size: 1.4rem; }
+      .page-heading p { display: none; }
+      .top-actions { gap: 6px; }
+      .btn { padding: 8px 10px; }
+      .detail-grid { grid-template-columns: 1fr; }
+      .detail-cell { border-right: 0; border-bottom: 1px solid var(--line); }
+      .detail-cell:last-child { border-bottom: 0; }
+      .drawer-head, .drawer-body, .drawer-actions { padding-left: 17px; padding-right: 17px; }
+      .drawer-actions { flex-wrap: wrap; }
+      .drawer-actions .btn { flex: 1 1 auto; }
+      .drawer-actions .btn:first-child { margin-right: 0; }
+      .field-row, .metric-grid { grid-template-columns: 1fr; }
+      .source-item { grid-template-columns: 1fr auto; }
+      .source-item > :last-child { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar" aria-label="Основная навигация">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span class="brand-bars"><i></i><i></i><i></i></span></div>
+        <div><strong>ИнвестСигнал</strong><small>аналитический контур</small></div>
+      </div>
+      <div class="nav-label">Рабочая область</div>
+      <nav class="nav-list">
+        <button class="nav-item active" data-view="queue">
+          <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
+          Очередь проверки <span class="nav-count" id="queueCount">0</span>
+        </button>
+        <button class="nav-item" data-view="sources">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>
+          Источники
+        </button>
+        <button class="nav-item" data-view="analytics">
+          <svg viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m5 7H2"/></svg>
+          Аналитика
+        </button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="sync"><span class="sync-dot"></span><span>Система работает штатно</span></div>
+        <div class="profile"><span class="avatar">АК</span><div><strong>Анна Крылова</strong><small>Старший аналитик</small></div></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="menuBtn" aria-label="Открыть меню"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <div class="page-heading"><h1 id="pageTitle">Очередь проверки</h1><p id="pageSubtitle">Потенциальные проекты, требующие решения эксперта</p></div>
+        <div class="top-actions">
+          <span class="demo-pill">● Демо-данные</span>
+          <button class="btn" id="exportBtn"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14"/></svg><span>Экспорт готовых</span></button>
+          <button class="btn btn-primary" id="addBtn"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Добавить сигнал</span></button>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="section-view active" id="view-queue">
+          <div class="stats" id="stats"></div>
+          <div class="workspace">
+            <div class="workspace-head">
+              <div class="workspace-title"><h2>Приоритетные проекты</h2><p id="resultSummary">Сортировка по итоговой оценке</p></div>
+              <div class="filters">
+                <label class="search" aria-label="Поиск по компаниям и сигналам">
+                  <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                  <input id="searchInput" type="search" placeholder="Компания или сигнал">
+                </label>
+                <select class="select" id="statusFilter" aria-label="Фильтр по статусу">
+                  <option value="all">Все статусы</option>
+                  <option value="new">Новые</option>
+                  <option value="review">На проверке</option>
+                  <option value="approved">Одобрены</option>
+                  <option value="exported">Экспортированы</option>
+                  <option value="rejected">Отклонены</option>
+                </select>
+                <select class="select" id="sectorFilter" aria-label="Фильтр по отрасли"><option value="all">Все отрасли</option></select>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Компания</th><th>Сигнал</th><th>Оценка</th><th>Срочность</th><th>Статус</th><th>Ответственный</th><th aria-label="Действия"></th></tr></thead>
+                <tbody id="caseRows"></tbody>
+              </table>
+              <div class="empty hidden" id="emptyState"><strong>Подходящих проектов нет</strong>Измените поисковый запрос или фильтры.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-view" id="view-sources">
+          <div class="stats">
+            <article class="stat"><div class="stat-label">Активных источников <span class="delta">4 из 4</span></div><div class="stat-value">4</div><div class="stat-note">Последний сбор 8 минут назад</div></article>
+            <article class="stat"><div class="stat-label">Документов за сутки</div><div class="stat-value">1 284</div><div class="stat-note">+17% к среднему за неделю</div></article>
+            <article class="stat"><div class="stat-label">Новых сигналов</div><div class="stat-value">36</div><div class="stat-note">2,8% обработанных документов</div></article>
+            <article class="stat"><div class="stat-label">Ошибки загрузки</div><div class="stat-value">3</div><div class="stat-note">Автоповтор запланирован</div></article>
+          </div>
+          <div class="split-grid">
+            <div class="panel"><div class="panel-head"><div><h2>Контроль источников</h2><p>Состояние коннекторов и расписание сбора</p></div></div><div class="source-list" id="sourceList"></div></div>
+            <div class="panel"><div class="panel-head"><div><h2>Сигналы по источникам</h2><p>Распределение за последние 7 дней</p></div></div><div class="chart-pad"><div class="donut-wrap"><div class="donut"></div></div><div class="legend"><span><i style="background:#8aa800"></i>Новости · 38%</span><span><i style="background:#386f9c"></i>Закупки · 24%</span><span><i style="background:#b87913"></i>Вакансии · 19%</span><span><i style="background:#a891c9"></i>Отчётность · 19%</span></div></div></div>
+          </div>
+        </section>
+
+        <section class="section-view" id="view-analytics">
+          <div class="metric-grid">
+            <article class="metric-card"><strong>41%</strong><span>сигналов подтверждено экспертами</span></article>
+            <article class="metric-card"><strong>7,4 ч</strong><span>медианное время до решения</span></article>
+            <article class="metric-card"><strong>4,2 дня</strong><span>среднее преимущество во времени</span></article>
+          </div>
+          <div class="split-grid">
+            <div class="panel"><div class="panel-head"><div><h2>Подтверждение по типам сигналов</h2><p>Доля одобренных экспертами кандидатов</p></div></div><div class="bars" id="signalBars"></div></div>
+            <div class="panel"><div class="panel-head"><div><h2>Воронка проверки</h2><p>Текущий цикл обработки</p></div></div><div class="bars">
+              <div class="bar-row"><label>Обнаружено</label><div class="bar-track"><div class="bar-fill" style="width:100%"></div></div><b>36</b></div>
+              <div class="bar-row"><label>В очереди</label><div class="bar-track"><div class="bar-fill" style="width:64%"></div></div><b>23</b></div>
+              <div class="bar-row"><label>Одобрено</label><div class="bar-track"><div class="bar-fill" style="width:31%"></div></div><b>11</b></div>
+              <div class="bar-row"><label>Экспортировано</label><div class="bar-track"><div class="bar-fill" style="width:19%"></div></div><b>7</b></div>
+            </div></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="overlay" id="overlay"></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle"></aside>
+
+  <section class="modal" id="addModal" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+    <div class="modal-head"><h2 id="addTitle">Добавить сигнал вручную</h2><button class="icon-btn" id="closeModal" aria-label="Закрыть">×</button></div>
+    <form id="addForm">
+      <div class="modal-body">
+        <div class="field"><label for="newCompany">Компания</label><input id="newCompany" name="company" required placeholder="Например, ООО «Компания»"></div>
+        <div class="field-row">
+          <div class="field"><label for="newSector">Отрасль</label><select id="newSector" name="sector" required><option>Машиностроение</option><option>Металлургия</option><option>Химическая промышленность</option><option>Логистика</option><option>Пищевая промышленность</option></select></div>
+          <div class="field"><label for="newCity">Муниципалитет</label><input id="newCity" name="city" required placeholder="Екатеринбург"></div>
+        </div>
+        <div class="field"><label for="newSignal">Описание сигнала</label><textarea id="newSignal" name="signal" required placeholder="Что указывает на возможный инвестиционный проект?"></textarea></div>
+        <div class="field"><label for="newSource">Источник</label><input id="newSource" name="source" required placeholder="Название документа или ссылка"></div>
+      </div>
+      <div class="modal-actions"><button class="btn" type="button" id="cancelModal">Отмена</button><button class="btn btn-primary" type="submit">Создать карточку</button></div>
+    </form>
+  </section>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const seedCases = [
+      {
+        id: 'INV-0261', company: 'Урал Композит', initials: 'УК', sector: 'Композитные материалы', city: 'Екатеринбург',
+        signalType: 'Расширение производства', signal: 'Закупка линии непрерывного формования', source: 'ЕИС Закупки', sourceDate: '24 сен, 09:42',
+        score: 91, urgency: 'high', urgencyLabel: 'Критическая', status: 'new', owner: 'Не назначен', amount: '1,8 млрд ₽', stage: 'Подготовка',
+        summary: 'Компания готовит закупку производственной линии и одновременно ищет инженеров для нового участка. Совокупность сигналов указывает на проект расширения в горизонте 6–9 месяцев.',
+        factors: { 'Релевантность': 96, 'Уверенность': 91, 'Региональный эффект': 88, 'Срочность': 94 },
+        recommendation: 'Связаться с компанией в течение 2 рабочих дней',
+        rationale: 'Предложить площадку и консультацию по региональным мерам поддержки до завершения выбора локации.',
+        evidence: [
+          { source: 'ЕИС Закупки · извещение №0187', date: '24 сен, 09:42', text: 'Поставка и монтаж <mark>линии непрерывного формования композитных профилей</mark>, срок ввода — II квартал 2027 года.' },
+          { source: 'hh.ru · вакансии компании', date: '22 сен, 16:10', text: 'Открыто 12 позиций, включая <mark>руководителя нового производственного участка</mark> и инженеров-технологов.' }
+        ]
+      },
+      {
+        id: 'INV-0258', company: 'СеверТех Логистика', initials: 'СТ', sector: 'Логистика', city: 'Верхняя Пышма',
+        signalType: 'Новый объект', signal: 'Проектирование распределительного центра', source: 'Региональные новости', sourceDate: '24 сен, 08:15',
+        score: 86, urgency: 'high', urgencyLabel: 'Высокая', status: 'review', owner: 'А. Крылова', amount: '950 млн ₽', stage: 'Выбор площадки',
+        summary: 'Компания рассматривает строительство распределительного центра на Урале. Публично заявлен выбор между двумя регионами, поэтому окно для предложения площадки ограничено.',
+        factors: { 'Релевантность': 93, 'Уверенность': 84, 'Региональный эффект': 82, 'Срочность': 89 },
+        recommendation: 'Предложить подбор площадок и инфраструктурный расчёт',
+        rationale: 'У компании нет финального решения по региону, а близость к ЕКАД названа ключевым критерием.',
+        evidence: [
+          { source: 'Деловой Урал · интервью', date: '24 сен, 08:15', text: 'Компания выбирает регион для <mark>распределительного центра площадью около 28 тыс. м²</mark> и планирует определиться до конца октября.' }
+        ]
+      },
+      {
+        id: 'INV-0254', company: 'Ревдинские приводы', initials: 'РП', sector: 'Машиностроение', city: 'Ревда',
+        signalType: 'Импортозамещение', signal: 'Локализация компонентов сервоприводов', source: 'ГИСП', sourceDate: '23 сен, 17:30',
+        score: 82, urgency: 'medium', urgencyLabel: 'Средняя', status: 'approved', owner: 'И. Титов', amount: '620 млн ₽', stage: 'Предпроектная',
+        summary: 'Производитель планирует локализацию компонентов промышленной автоматики. Проект соответствует региональной специализации и может закрыть дефицит в цепочке поставок.',
+        factors: { 'Релевантность': 88, 'Уверенность': 79, 'Региональный эффект': 91, 'Срочность': 68 },
+        recommendation: 'Передать отраслевому эксперту и подготовить меры поддержки',
+        rationale: 'Необходима проверка доступности субсидии на НИОКР и подбор локальных поставщиков.',
+        evidence: [
+          { source: 'ГИСП · каталог проектов', date: '23 сен, 17:30', text: 'Инициатива предусматривает <mark>локализацию энкодеров и силовой электроники</mark> с выходом на серийный выпуск в 2028 году.' },
+          { source: 'Сайт компании · новости', date: '19 сен, 11:05', text: 'Подписано соглашение с техническим университетом о создании лаборатории промышленной автоматики.' }
+        ]
+      },
+      {
+        id: 'INV-0249', company: 'БиоФорм Урал', initials: 'БУ', sector: 'Химическая промышленность', city: 'Полевской',
+        signalType: 'Новая технология', signal: 'Пилот биоразлагаемой упаковки', source: 'Новости компаний', sourceDate: '23 сен, 12:18',
+        score: 76, urgency: 'medium', urgencyLabel: 'Средняя', status: 'new', owner: 'Не назначен', amount: '310 млн ₽', stage: 'НИОКР',
+        summary: 'Компания завершила лабораторные испытания материала и ищет промышленную площадку для пилотной линии. Инвестиционные параметры требуют подтверждения.',
+        factors: { 'Релевантность': 80, 'Уверенность': 72, 'Региональный эффект': 81, 'Срочность': 69 },
+        recommendation: 'Запросить параметры пилотной линии',
+        rationale: 'Перед подбором мер поддержки нужно уточнить мощность, сырьевую базу и требования к площадке.',
+        evidence: [{ source: 'Пресс-релиз компании', date: '23 сен, 12:18', text: 'После завершения испытаний компания <mark>приступает к поиску площадки для пилотной линии</mark> биоразлагаемых полимеров.' }]
+      },
+      {
+        id: 'INV-0246', company: 'АгроНова', initials: 'АН', sector: 'Пищевая промышленность', city: 'Ирбит',
+        signalType: 'Рост мощностей', signal: 'Набор смены на новый участок переработки', source: 'Порталы вакансий', sourceDate: '22 сен, 15:45',
+        score: 68, urgency: 'low', urgencyLabel: 'Плановая', status: 'exported', owner: 'М. Орлова', amount: '240 млн ₽', stage: 'Реализация',
+        summary: 'Массовый найм и закупка холодильного оборудования подтверждают запуск дополнительной смены на существующей площадке.',
+        factors: { 'Релевантность': 75, 'Уверенность': 86, 'Региональный эффект': 65, 'Срочность': 48 },
+        recommendation: 'Мониторить реализацию и инфраструктурные ограничения',
+        rationale: 'Проект уже реализуется; проактивная поддержка нужна только при появлении ограничений.',
+        evidence: [{ source: 'Портал вакансий', date: '22 сен, 15:45', text: 'Открыт набор <mark>35 сотрудников на новый участок переработки</mark>, запуск смены запланирован на ноябрь.' }]
+      },
+      {
+        id: 'INV-0241', company: 'ТехКерамика', initials: 'ТК', sector: 'Строительные материалы', city: 'Сысерть',
+        signalType: 'Модернизация', signal: 'Закупка печи без подтверждённого проекта', source: 'ЕИС Закупки', sourceDate: '21 сен, 10:05',
+        score: 44, urgency: 'low', urgencyLabel: 'Низкая', status: 'rejected', owner: 'А. Крылова', amount: 'Не указано', stage: 'Не определена',
+        summary: 'Единичная закупка оказалась заменой изношенного оборудования без роста мощности. Эксперт отклонил карточку как неинвестиционную.',
+        factors: { 'Релевантность': 38, 'Уверенность': 74, 'Региональный эффект': 31, 'Срочность': 32 },
+        recommendation: 'Не предпринимать действий',
+        rationale: 'Нет признаков расширения, новой площадки или роста занятости.',
+        evidence: [{ source: 'ЕИС Закупки', date: '21 сен, 10:05', text: 'Поставка печи выполняется <mark>взамен оборудования, выведенного из эксплуатации</mark>.' }]
+      }
+    ];
+
+    const sources = [
+      { icon: 'ЕИ', name: 'ЕИС Закупки', meta: 'Каждые 30 минут · 486 документов', health: 'Работает', time: '8 мин назад' },
+      { icon: 'ГИ', name: 'ГИСП', meta: 'Каждые 2 часа · 173 документа', health: 'Работает', time: '24 мин назад' },
+      { icon: 'СМ', name: 'Региональные СМИ', meta: 'Каждый час · 412 документов', health: 'Работает', time: '41 мин назад' },
+      { icon: 'ВК', name: 'Порталы вакансий', meta: 'Каждые 4 часа · 213 документов', health: 'Повтор через 6 мин', time: '1 ч назад', warn: true }
+    ];
+
+    const labels = {
+      new: 'Новый', review: 'На проверке', approved: 'Одобрен', exported: 'Экспортирован', rejected: 'Отклонён'
+    };
+    const titles = {
+      queue: ['Очередь проверки', 'Потенциальные проекты, требующие решения эксперта'],
+      sources: ['Источники данных', 'Состояние сбора и обнаружения сигналов'],
+      analytics: ['Аналитика контура', 'Качество выявления и скорость экспертной проверки']
+    };
+
+    let cases = loadCases();
+    let activeCaseId = null;
+    let toastTimer;
+
+    const $ = (id) => document.getElementById(id);
+    const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    function loadCases() {
+      try {
+        const stored = localStorage.getItem('investSignalCasesV1');
+        return stored ? JSON.parse(stored) : structuredClone(seedCases);
+      } catch { return structuredClone(seedCases); }
+    }
+    function saveCases() { localStorage.setItem('investSignalCasesV1', JSON.stringify(cases)); }
+
+    function renderStats() {
+      const open = cases.filter(c => ['new','review'].includes(c.status)).length;
+      const urgent = cases.filter(c => c.urgency === 'high' && !['rejected','exported'].includes(c.status)).length;
+      const approved = cases.filter(c => c.status === 'approved').length;
+      $('stats').innerHTML = `
+        <article class="stat"><div class="stat-label">Ожидают решения <span class="delta">+${Math.max(1, open - 2)} сегодня</span></div><div class="stat-value">${open}</div><div class="stat-note">Новые и находящиеся на проверке</div></article>
+        <article class="stat"><div class="stat-label">Высокий приоритет</div><div class="stat-value">${urgent}</div><div class="stat-note">Требуют реакции в течение 2 дней</div></article>
+        <article class="stat"><div class="stat-label">Готовы к экспорту</div><div class="stat-value">${approved}</div><div class="stat-note">Проверены и заполнены экспертом</div></article>
+        <article class="stat"><div class="stat-label">Среднее время проверки</div><div class="stat-value">7,4 ч</div><div class="stat-note">Цель пилота — менее 12 часов</div></article>`;
+      $('queueCount').textContent = open;
+    }
+
+    function getFilteredCases() {
+      const query = $('searchInput').value.trim().toLowerCase();
+      const status = $('statusFilter').value;
+      const sector = $('sectorFilter').value;
+      return cases.filter(c =>
+        (!query || [c.company, c.signal, c.signalType, c.city].some(v => v.toLowerCase().includes(query))) &&
+        (status === 'all' || c.status === status) && (sector === 'all' || c.sector === sector)
+      ).sort((a,b) => b.score - a.score);
+    }
+
+    function renderRows() {
+      const filtered = getFilteredCases();
+      $('caseRows').innerHTML = filtered.map(c => `
+        <tr data-id="${c.id}" tabindex="0" aria-label="Открыть карточку ${escapeHtml(c.company)}">
+          <td><div class="company"><span class="company-logo">${escapeHtml(c.initials)}</span><div><strong>${escapeHtml(c.company)}</strong><small>${escapeHtml(c.sector)} · ${escapeHtml(c.city)}</small></div></div></td>
+          <td><div class="signal"><strong>${escapeHtml(c.signal)}</strong><small>${escapeHtml(c.source)} · ${escapeHtml(c.sourceDate)}</small></div></td>
+          <td><div class="score"><span class="score-ring" style="--score:${c.score}"><b>${c.score}</b></span><small>${c.score >= 80 ? 'Высокая' : c.score >= 60 ? 'Средняя' : 'Низкая'}<br>уверенность</small></div></td>
+          <td><span class="urgency ${c.urgency}"><i></i>${escapeHtml(c.urgencyLabel)}</span></td>
+          <td><span class="tag tag-${c.status}">${labels[c.status]}</span></td>
+          <td><div class="owner"><span class="mini-avatar">${c.owner === 'Не назначен' ? '—' : c.owner.split(' ').map(v=>v[0]).join('').slice(0,2)}</span>${escapeHtml(c.owner)}</div></td>
+          <td class="more">›</td>
+        </tr>`).join('');
+      $('emptyState').classList.toggle('hidden', filtered.length > 0);
+      $('resultSummary').textContent = `${filtered.length} ${decline(filtered.length, ['проект', 'проекта', 'проектов'])} · сортировка по итоговой оценке`;
+      $('caseRows').querySelectorAll('tr').forEach(row => {
+        row.addEventListener('click', () => openCase(row.dataset.id));
+        row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCase(row.dataset.id); } });
+      });
+    }
+
+    function decline(n, words) { return words[(n%100>4 && n%100<20) ? 2 : [2,0,1,1,1,2][Math.min(n%10,5)]]; }
+
+    function renderSources() {
+      $('sourceList').innerHTML = sources.map(s => `<div class="source-item"><div class="source-name"><span class="source-icon">${s.icon}</span><div><strong>${s.name}</strong><small>${s.meta}</small></div></div><span class="health ${s.warn ? 'warn':''}">${s.health}</span><small style="color:var(--muted)">${s.time}</small></div>`).join('');
+      const signalData = [['Расширение',72],['Новый объект',58],['Модернизация',46],['Импортозамещение',64],['Новая технология',39]];
+      $('signalBars').innerHTML = signalData.map(([name,val]) => `<div class="bar-row"><label>${name}</label><div class="bar-track"><div class="bar-fill" style="width:${val}%"></div></div><b>${val}%</b></div>`).join('');
+    }
+
+    function openCase(id) {
+      const c = cases.find(x => x.id === id); if (!c) return;
+      activeCaseId = id;
+      $('drawer').innerHTML = `
+        <div class="drawer-head">
+          <div class="drawer-topline"><div><span class="drawer-kicker">${c.id} · ${escapeHtml(c.signalType)}</span></div><button class="icon-btn" id="closeDrawer" aria-label="Закрыть карточку">×</button></div>
+          <h2 id="drawerTitle">${escapeHtml(c.company)}</h2>
+          <div class="drawer-subtitle">${escapeHtml(c.sector)} · ${escapeHtml(c.city)} · <span class="tag tag-${c.status}">${labels[c.status]}</span></div>
+          <div class="drawer-summary">${escapeHtml(c.summary)}</div>
+        </div>
+        <div class="drawer-body">
+          <div class="detail-grid"><div class="detail-cell"><span>Инвестиции</span><strong>${escapeHtml(c.amount)}</strong></div><div class="detail-cell"><span>Стадия</span><strong>${escapeHtml(c.stage)}</strong></div><div class="detail-cell"><span>Приоритет</span><strong>${c.score} из 100</strong></div></div>
+          <section class="detail-section"><h3>Почему проект в очереди</h3><div class="score-list">${Object.entries(c.factors).map(([name,value]) => `<div class="score-factor"><label>${name}</label><div class="bar-track"><div class="bar-fill" style="width:${value}%"></div></div><b>${value}</b></div>`).join('')}</div></section>
+          <section class="detail-section"><h3>Доказательства</h3><div class="evidence-list">${c.evidence.map(e => `<article class="evidence"><div class="evidence-meta"><strong>${escapeHtml(e.source)}</strong><span>${escapeHtml(e.date)}</span></div><p>${e.text}</p></article>`).join('')}</div></section>
+          <section class="detail-section"><h3>Рекомендованное действие</h3><div class="recommend"><small>Следующий шаг</small><strong>${escapeHtml(c.recommendation)}</strong><p>${escapeHtml(c.rationale)}</p></div><div class="field-row"><div class="field"><label for="ownerSelect">Ответственный</label><select id="ownerSelect"><option ${c.owner==='Не назначен'?'selected':''}>Не назначен</option><option ${c.owner==='А. Крылова'?'selected':''}>А. Крылова</option><option ${c.owner==='И. Титов'?'selected':''}>И. Титов</option><option ${c.owner==='М. Орлова'?'selected':''}>М. Орлова</option></select></div><div class="field"><label for="actionSelect">Действие</label><select id="actionSelect"><option>Связаться с компанией</option><option>Запросить данные</option><option>Передать эксперту</option><option>Продолжить мониторинг</option></select></div></div></section>
+        </div>
+        <div class="drawer-actions">
+          <button class="btn btn-danger" data-decision="rejected">Отклонить</button>
+          <button class="btn" data-decision="review">Наблюдать</button>
+          <button class="btn btn-dark" data-decision="approved">Одобрить проект</button>
+        </div>`;
+      $('overlay').classList.add('open'); $('drawer').classList.add('open');
+      $('closeDrawer').addEventListener('click', closeAll);
+      $('ownerSelect').addEventListener('change', e => { c.owner = e.target.value; saveCases(); renderRows(); showToast('Ответственный обновлён'); });
+      $('drawer').querySelectorAll('[data-decision]').forEach(btn => btn.addEventListener('click', () => updateStatus(btn.dataset.decision)));
+      setTimeout(() => $('closeDrawer').focus(), 220);
+    }
+
+    function updateStatus(status) {
+      const c = cases.find(x => x.id === activeCaseId); if (!c) return;
+      c.status = status;
+      if (status === 'approved' && c.owner === 'Не назначен') c.owner = 'А. Крылова';
+      saveCases(); renderStats(); renderRows(); closeAll();
+      showToast(status === 'approved' ? `<strong>${escapeHtml(c.company)}</strong> одобрен и готов к экспорту` : status === 'rejected' ? 'Сигнал отклонён и сохранён для оценки качества' : 'Карточка оставлена на наблюдении');
+    }
+
+    function closeAll() {
+      $('drawer').classList.remove('open'); $('addModal').classList.remove('open'); $('overlay').classList.remove('open'); activeCaseId = null;
+    }
+    function showToast(message) { clearTimeout(toastTimer); $('toast').innerHTML = message; $('toast').classList.add('show'); toastTimer = setTimeout(() => $('toast').classList.remove('show'), 3200); }
+    function openAddModal() { $('overlay').classList.add('open'); $('addModal').classList.add('open'); setTimeout(()=>$('newCompany').focus(), 150); }
+
+    function exportApproved() {
+      const ready = cases.filter(c => c.status === 'approved');
+      if (!ready.length) { showToast('Нет одобренных карточек для экспорта'); return; }
+      const headers = ['ID','Компания','ИНН','Отрасль','Муниципалитет','Сигнал','Стадия','Инвестиции','Приоритет','Ответственный'];
+      const rows = ready.map(c => [c.id,c.company,'',c.sector,c.city,c.signal,c.stage,c.amount,c.score,c.owner]);
+      const csv = [headers,...rows].map(row => row.map(v => `"${String(v).replaceAll('"','""')}"`).join(';')).join('\n');
+      const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
+      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'invest-signal-export.csv'; a.click(); URL.revokeObjectURL(url);
+      ready.forEach(c => c.status = 'exported'); saveCases(); renderStats(); renderRows(); showToast(`Экспортировано карточек: <strong>${ready.length}</strong>`);
+    }
+
+    function switchView(view) {
+      document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+      document.querySelectorAll('.section-view').forEach(v => v.classList.toggle('active', v.id === 'view-'+view));
+      $('pageTitle').textContent = titles[view][0]; $('pageSubtitle').textContent = titles[view][1]; $('sidebar').classList.remove('open');
+    }
+
+    function initWebMCP() {
+      const context = document.modelContext;
+      if (!context?.registerTool) return;
+      const register = tool => { try { Promise.resolve(context.registerTool(tool)).catch(()=>{}); } catch {} };
+      register({
+        name: 'list_investment_candidates', title: 'Показать инвестиционные проекты',
+        description: 'Возвращает текущие карточки потенциальных инвестиционных проектов с оценкой и статусом.',
+        inputSchema: { type:'object', properties:{ status:{type:'string',enum:['all','new','review','approved','exported','rejected']} }, additionalProperties:false },
+        annotations: { readOnlyHint:true, untrustedContentHint:false },
+        execute(input={}) {
+          const allowed = ['all','new','review','approved','exported','rejected'];
+          const status = input.status || 'all';
+          if (!allowed.includes(status)) throw new Error('Недопустимый статус');
+          return cases.filter(c=>status==='all'||c.status===status).map(c=>({id:c.id,company:c.company,signal:c.signal,score:c.score,status:c.status}));
+        }
+      });
+      register({
+        name: 'set_candidate_review_status', title: 'Изменить решение по проекту',
+        description: 'Изменяет экспертный статус одной карточки и обновляет видимую очередь.',
+        inputSchema: { type:'object', properties:{ id:{type:'string'}, status:{type:'string',enum:['review','approved','rejected']} }, required:['id','status'], additionalProperties:false },
+        annotations: { readOnlyHint:false, untrustedContentHint:false },
+        execute(input) {
+          if (!input || typeof input.id !== 'string' || !['review','approved','rejected'].includes(input.status)) throw new Error('Некорректные параметры решения');
+          const c=cases.find(x=>x.id===input.id); if(!c) throw new Error('Карточка не найдена');
+          c.status=input.status; saveCases(); renderStats(); renderRows();
+          return {id:c.id,status:c.status,updated:true};
+        }
+      });
+    }
+
+    document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
+    $('searchInput').addEventListener('input', renderRows); $('statusFilter').addEventListener('change', renderRows); $('sectorFilter').addEventListener('change', renderRows);
+    $('menuBtn').addEventListener('click', () => $('sidebar').classList.toggle('open'));
+    $('overlay').addEventListener('click', closeAll); $('addBtn').addEventListener('click', openAddModal); $('closeModal').addEventListener('click', closeAll); $('cancelModal').addEventListener('click', closeAll); $('exportBtn').addEventListener('click', exportApproved);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
+    $('addForm').addEventListener('submit', e => {
+      e.preventDefault(); const form = new FormData(e.target); const company = form.get('company').trim();
+      const id = 'INV-' + String(Math.max(...cases.map(c => Number(c.id.split('-')[1]))) + 1).padStart(4,'0');
+      const signal = form.get('signal').trim();
+      cases.unshift({ id, company, initials: company.replace(/[ОООАО«»"\s]/g,'').slice(0,2).toUpperCase() || 'НС', sector: form.get('sector'), city: form.get('city').trim(), signalType:'Ручной сигнал', signal, source:form.get('source').trim(), sourceDate:'сегодня', score:60, urgency:'medium', urgencyLabel:'Средняя', status:'new', owner:'Не назначен', amount:'Не указано', stage:'Требует проверки', summary:'Карточка создана аналитиком вручную. Факты и параметры проекта требуют экспертной проверки.', factors:{'Релевантность':65,'Уверенность':55,'Региональный эффект':60,'Срочность':58}, recommendation:'Проверить источник и запросить недостающие данные', rationale:'Для карточки пока недостаточно независимых подтверждений.', evidence:[{source:form.get('source').trim(),date:'сегодня',text:escapeHtml(signal)}] });
+      saveCases(); renderStats(); renderRows(); e.target.reset(); closeAll(); showToast(`Создана карточка <strong>${id}</strong>`);
+    });
+
+    [...new Set(cases.map(c => c.sector))].sort().forEach(sector => { const o=document.createElement('option'); o.value=sector; o.textContent=sector; $('sectorFilter').appendChild(o); });
+    renderStats(); renderRows(); renderSources(); initWebMCP();
+  </script>
+</body>
+</html>
