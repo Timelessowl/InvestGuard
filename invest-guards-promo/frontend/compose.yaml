@@ -1,0 +1,4 @@
+name: invest-signal
+# Keep the existing frontend-folder launch command working with the complete stack.
+include:
+  - ../compose.yaml
