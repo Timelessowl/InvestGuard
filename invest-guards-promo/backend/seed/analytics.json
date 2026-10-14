@@ -1,0 +1,28 @@
+{
+  "confirmationRate": "41%",
+  "medianReview": "7,4 ч",
+  "leadTime": "4,2 дня",
+  "signals": [
+    {
+      "label": "Расширение",
+      "value": 72
+    },
+    {
+      "label": "Новый объект",
+      "value": 58
+    },
+    {
+      "label": "Модернизация",
+      "value": 46
+    },
+    {
+      "label": "Импортозамещение",
+      "value": 64
+    },
+    {
+      "label": "Новая технология",
+      "value": 39
+    }
+  ],
+  "sourceSignals": 36
+}

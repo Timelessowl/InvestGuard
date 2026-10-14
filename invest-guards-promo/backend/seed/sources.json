@@ -1,0 +1,42 @@
+[
+  {
+    "id": "procurement",
+    "name": "ЕИС Закупки",
+    "category": "Закупки",
+    "schedule": "Каждые 30 минут",
+    "documents": 486,
+    "lastRun": "24 сен, 09:42",
+    "status": "active",
+    "share": 24
+  },
+  {
+    "id": "gisp",
+    "name": "ГИСП",
+    "category": "Отчётность",
+    "schedule": "Каждые 2 часа",
+    "documents": 173,
+    "lastRun": "24 сен, 09:26",
+    "status": "active",
+    "share": 19
+  },
+  {
+    "id": "news",
+    "name": "Региональные СМИ",
+    "category": "Новости",
+    "schedule": "Каждый час",
+    "documents": 412,
+    "lastRun": "24 сен, 09:09",
+    "status": "active",
+    "share": 38
+  },
+  {
+    "id": "jobs",
+    "name": "Порталы вакансий",
+    "category": "Вакансии",
+    "schedule": "Каждые 4 часа",
+    "documents": 213,
+    "lastRun": "24 сен, 08:50",
+    "status": "retry",
+    "share": 19
+  }
+]
