@@ -18,6 +18,7 @@ class Evidence(BaseModel):
     date: str
     excerpt: str
     highlights: list[str] = Field(default_factory=list)
+    url: str | None = None
 
 
 class Candidate(BaseModel):
@@ -44,6 +45,7 @@ class Candidate(BaseModel):
     rationale: str
     nextAction: Action = 'Связаться с компанией'
     evidence: list[Evidence]
+    origin: Literal['demo', 'manual', 'ai'] = 'demo'
 
 
 class NewSignal(BaseModel):
@@ -68,15 +70,45 @@ class CandidatePatch(BaseModel):
         return self
 
 
+class SourceConfig(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    id: str
+    name: str
+    category: str
+    url: str
+    regional: bool
+    scheduleMinutes: int = Field(ge=5)
+    enabled: bool = True
+
+
 class DataSource(BaseModel):
     id: str
     name: str
     category: str
+    url: str = ''
+    regional: bool = True
+    scheduleMinutes: int = 60
+    enabled: bool = True
     schedule: str
     documents: int = Field(ge=0)
+    signals: int = Field(default=0, ge=0)
     lastRun: str
+    lastRunAt: str | None = None
+    lastError: str | None = None
     status: Literal['active', 'retry']
     share: float = Field(ge=0, le=100)
+
+
+class DocumentOut(BaseModel):
+    id: int
+    sourceId: str
+    url: str
+    title: str
+    publishedAt: str | None
+    collectedAt: str
+    stage: Literal['new', 'skipped', 'rejected', 'signal', 'merged', 'error']
+    reason: str | None
+    candidateId: str | None
 
 
 class AnalyticsSignal(BaseModel):

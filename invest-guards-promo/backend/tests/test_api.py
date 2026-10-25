@@ -1,29 +1,9 @@
 """API integration tests use a disposable PostgreSQL database, never the demo database."""
 from concurrent.futures import ThreadPoolExecutor
-from uuid import uuid4
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
 
-from app.database import make_engine
 from app.main import create_app
-
-
-@pytest.fixture
-def client():
-    admin = make_engine()
-    name = 'investsignal_test_' + uuid4().hex
-    with admin.connect().execution_options(isolation_level='AUTOCOMMIT') as connection:
-        connection.execute(text(f'CREATE DATABASE {name}'))
-    url = admin.url.set(database=name).render_as_string(hide_password=False)
-    try:
-        with TestClient(create_app(url)) as api:
-            yield api, url
-    finally:
-        with admin.connect().execution_options(isolation_level='AUTOCOMMIT') as connection:
-            connection.execute(text(f'DROP DATABASE {name} WITH (FORCE)'))
-        admin.dispose()
 
 
 INPUT = {'company': 'ООО «Тестовый проект»', 'city': 'Екатеринбург', 'sector': 'Логистика',
@@ -35,7 +15,7 @@ def test_seed_and_restart_preserve_changes(client):
     assert api.get('/api/health').json()['database'] == 'ok'
     state = api.get('/api/state').json()
     assert len(state['candidates']) == 6
-    assert len(state['sources']) == 4
+    assert [s['id'] for s in state['sources']] == ['66ru', 'e1', 'justmedia', 'kommersant-ural', 'oblgazeta', 'ura']
     assert state['pilotAnalytics']['confirmationRate'] == '41%'
     assert state['candidates'][0]['location']['precision'] == 'municipality'
     api.patch('/api/candidates/INV-0261', json={'owner': 'М. Орлова', 'status': 'approved'})
@@ -70,7 +50,7 @@ def test_validation_unknown_ids_and_export_only_status(client):
         assert api.patch('/api/candidates/INV-0261', json=patch).status_code == 422
     assert api.patch('/api/candidates/missing', json={'status': 'review'}).status_code == 404
     assert api.get('/api/candidates/INV-99999999999999999999999999999999999').status_code == 404
-    assert api.post('/api/sources/missing/retry').status_code == 404
+    assert api.post('/api/sources/missing/collect').status_code == 404
 
 
 def test_atomic_approved_export_and_repeat_download(client):
@@ -86,15 +66,9 @@ def test_atomic_approved_export_and_repeat_download(client):
     assert 'Урал Композит' not in exported['csv']
     assert "'=DANGEROUS()" in exported['csv']
     assert api.get('/api/candidates/' + created['id']).json()['status'] == 'exported'
+    locked = api.patch('/api/candidates/' + created['id'], json={'status': 'review'})
+    assert locked.status_code == 409
+    assert api.patch('/api/candidates/' + created['id'], json={'owner': 'И. Титов'}).status_code == 200
     download = api.get('/api/exports/' + exported['exportId'])
     assert download.text == exported['csv']
     assert download.headers['content-type'].startswith('text/csv')
-
-
-def test_simulated_retry_does_not_invent_documents(client):
-    api, _ = client
-    retried = api.post('/api/sources/jobs/retry').json()
-    assert retried['status'] == 'active'
-    assert retried['documents'] == 213
-    assert retried['lastRun'] != '24 сен, 08:50'
-    assert next(s for s in api.get('/api/sources').json() if s['id'] == 'jobs') == retried

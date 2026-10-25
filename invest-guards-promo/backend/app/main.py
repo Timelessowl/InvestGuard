@@ -4,40 +4,29 @@ import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from .database import CandidateRecord, ExportRecord, MetadataRecord, SourceRecord, initialize, make_engine, session_factory
-from .schemas import Candidate, CandidatePatch, DataSource, ExportResult, NewSignal, PilotAnalytics, State
+from . import service
+from .collectors import collect_source
+from .database import CandidateRecord, ExportRecord, MetadataRecord, initialize, make_engine, session_factory
+from .net import http_client
+from .schemas import Candidate, CandidatePatch, DataSource, DocumentOut, ExportResult, NewSignal, PilotAnalytics, State
 
 log = logging.getLogger(__name__)
 
 
-def display_date():
-    now = datetime.now(ZoneInfo('Asia/Yekaterinburg'))
-    months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
-    return f'{now.day} {months[now.month-1]}, {now:%H:%M}'
-
-
-def candidate_number(candidate_id):
-    if not re.fullmatch(r'INV-\d+', candidate_id):
-        raise HTTPException(404, 'Карточка не найдена.')
-    number = int(candidate_id.split('-')[1])
-    if number > 9223372036854775807:
-        raise HTTPException(404, 'Карточка не найдена.')
-    return number
-
-
 def csv_text(candidates):
     output = io.StringIO(newline='')
-    output.write('\ufeff')
+    output.write('﻿')
     writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_ALL, lineterminator='\r\n')
     writer.writerow(['ID', 'Компания', 'ИНН', 'Отрасль', 'Муниципалитет', 'Сигнал', 'Стадия', 'Инвестиции', 'Приоритет', 'Ответственный', 'Следующее действие'])
     for c in candidates:
@@ -46,18 +35,19 @@ def csv_text(candidates):
     return output.getvalue()
 
 
-def create_app(database_url=None):
+def create_app(database_url=None, fetch_transport=None):
     @asynccontextmanager
     async def lifespan(app):
         engine = make_engine(database_url)
         try:
             initialize(engine)
             app.state.sessions = session_factory(engine)
+            app.state.http = http_client(fetch_transport)
             yield
         finally:
             engine.dispose()
 
-    app = FastAPI(title='ИнвестСигнал Demo API', version='0.1.0', lifespan=lifespan,
+    app = FastAPI(title='ИнвестСигнал API', version='0.2.0', lifespan=lifespan,
                   docs_url='/api/docs', openapi_url='/api/openapi.json', redoc_url=None)
 
     def session(request: Request):
@@ -71,7 +61,18 @@ def create_app(database_url=None):
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, error):
-        return JSONResponse(status_code=422, content={'detail': 'Проверьте поля запроса: ' + '; '.join('.'.join(str(p) for p in e['loc'][1:]) + ': ' + e['msg'] for e in error.errors())})
+        def describe(e):
+            field = '.'.join(str(p) for p in e['loc'][1:])
+            return f'{field}: {e["msg"]}' if field else e['msg']
+        return JSONResponse(status_code=422, content={'detail': 'Проверьте поля запроса: ' + '; '.join(describe(e) for e in error.errors())})
+
+    @app.exception_handler(service.NotFound)
+    async def not_found(request, error):
+        return JSONResponse(status_code=404, content={'detail': str(error)})
+
+    @app.exception_handler(service.Conflict)
+    async def conflict(request, error):
+        return JSONResponse(status_code=409, content={'detail': str(error)})
 
     @app.get('/api/health')
     def health(db: Session = Depends(session)):
@@ -80,68 +81,43 @@ def create_app(database_url=None):
 
     @app.get('/api/state', response_model=State)
     def state(db: Session = Depends(session)):
-        return State(candidates=[r.payload for r in db.scalars(select(CandidateRecord).order_by(CandidateRecord.number.desc()))],
-                     sources=[r.payload for r in db.scalars(select(SourceRecord).order_by(SourceRecord.id))],
+        return State(candidates=service.list_candidates(db), sources=service.list_sources(db),
                      pilotAnalytics=db.get(MetadataRecord, 'pilot_analytics').payload)
 
     @app.get('/api/candidates', response_model=list[Candidate])
     def candidates(db: Session = Depends(session)):
-        return [r.payload for r in db.scalars(select(CandidateRecord).order_by(CandidateRecord.number.desc()))]
+        return service.list_candidates(db)
 
     @app.get('/api/candidates/{candidate_id}', response_model=Candidate)
     def candidate(candidate_id: str, db: Session = Depends(session)):
-        record = db.get(CandidateRecord, candidate_number(candidate_id))
-        if not record:
-            raise HTTPException(404, 'Карточка не найдена.')
-        return record.payload
+        return service.get_candidate(db, candidate_id)
 
     @app.post('/api/candidates', response_model=Candidate, status_code=201)
     def create(input: NewSignal, db: Session = Depends(session)):
-        date = display_date()
-        initials = re.sub(r'[«»"\s]', '', re.sub(r'^(ООО|АО|ПАО)\s*', '', input.company))[:2].upper()
-        result = Candidate(**input.model_dump(), id='pending', initials=initials,
-            signalType='Ручной сигнал', sourceDate=date, score=60, urgency='medium', urgencyLabel='Средняя',
-            status='new', owner='Не назначен', amount='Не указано', stage='Требует проверки',
-            summary='Карточка создана аналитиком вручную. Факты и параметры проекта требуют экспертной проверки.',
-            factors={'Релевантность': 65, 'Уверенность': 55, 'Региональный эффект': 60, 'Срочность': 58},
-            recommendation='Проверить источник и запросить недостающие данные',
-            rationale='Для карточки пока недостаточно независимых подтверждений.', nextAction='Запросить данные',
-            evidence=[{'source': input.source, 'date': date, 'excerpt': input.signal, 'highlights': []}])
-        record = CandidateRecord(payload=result.model_dump())
-        db.add(record)
-        db.flush()
-        result.id = f'INV-{record.number:04d}'
-        record.payload = result.model_dump()
-        db.commit()
-        return result
+        return service.create_manual(db, input)
 
     @app.patch('/api/candidates/{candidate_id}', response_model=Candidate)
     def update(candidate_id: str, patch: CandidatePatch, db: Session = Depends(session)):
-        record = db.scalar(select(CandidateRecord).where(CandidateRecord.number == candidate_number(candidate_id)).with_for_update())
-        if not record:
-            raise HTTPException(404, 'Карточка не найдена.')
-        result = Candidate.model_validate({**record.payload, **patch.model_dump(exclude_unset=True)})
-        if patch.status == 'approved' and result.owner == 'Не назначен':
-            result.owner = 'А. Крылова'
-        record.payload = result.model_dump()
-        record.updated_at = datetime.now(ZoneInfo('UTC'))
-        db.commit()
-        return result
+        return service.patch_candidate(db, candidate_id, patch)
 
     @app.get('/api/sources', response_model=list[DataSource])
     def sources(db: Session = Depends(session)):
-        return [r.payload for r in db.scalars(select(SourceRecord).order_by(SourceRecord.id))]
+        return service.list_sources(db)
 
-    @app.post('/api/sources/{source_id}/retry', response_model=DataSource,
-              description='Simulated collection only; no external documents are fetched.')
-    def retry(source_id: str, db: Session = Depends(session)):
-        record = db.scalar(select(SourceRecord).where(SourceRecord.id == source_id).with_for_update())
-        if not record:
+    @app.post('/api/sources/{source_id}/collect', description='Скачивает ленту источника и сохраняет новые документы.')
+    def collect(source_id: str, request: Request, db: Session = Depends(session)):
+        try:
+            _, added = collect_source(db, source_id, request.app.state.http)
+        except LookupError:
             raise HTTPException(404, 'Источник не найден.')
-        result = DataSource.model_validate({**record.payload, 'status': 'active', 'lastRun': display_date()})
-        record.payload = result.model_dump()
-        db.commit()
-        return result
+        source = next(s for s in service.list_sources(db) if s.id == source_id)
+        return {'source': source, 'added': added}
+
+    @app.get('/api/documents', response_model=list[DocumentOut])
+    def documents(stage: Literal['new', 'skipped', 'rejected', 'signal', 'merged', 'error'] | None = None,
+                  source: str | None = None, q: str | None = Query(None, max_length=200),
+                  limit: int = Query(50, ge=1, le=200), db: Session = Depends(session)):
+        return service.list_documents(db, stage, source, q, limit)
 
     @app.get('/api/analytics', response_model=PilotAnalytics,
              description='Fixed sample pilot metrics, not measured performance.')
