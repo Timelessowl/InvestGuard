@@ -111,6 +111,43 @@ class DocumentOut(BaseModel):
     candidateId: str | None
 
 
+class LlmUsage(BaseModel):
+    spentUsd: float
+    todayUsd: float
+    budgetUsd: float
+    dailyBudgetUsd: float
+    calls: int
+    byPurpose: dict[str, float]
+    configured: bool
+
+
+class PipelineStats(BaseModel):
+    stages: dict[str, int]
+    usage: LlmUsage
+
+
+class ChatMessage(BaseModel):
+    role: Literal['user', 'assistant']
+    content: Annotated[str, StringConstraints(max_length=8000)]
+
+
+class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    messages: list[ChatMessage] = Field(min_length=1, max_length=40)
+
+
+class ToolTrace(BaseModel):
+    name: str
+    arguments: dict
+    summary: str
+
+
+class ChatReply(BaseModel):
+    reply: str
+    trace: list[ToolTrace]
+    changed: bool
+
+
 class AnalyticsSignal(BaseModel):
     label: str
     value: float
@@ -128,6 +165,7 @@ class State(BaseModel):
     candidates: list[Candidate]
     sources: list[DataSource]
     pilotAnalytics: PilotAnalytics
+    pipeline: PipelineStats
 
 
 class ExportResult(BaseModel):

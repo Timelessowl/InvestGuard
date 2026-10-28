@@ -16,10 +16,11 @@ def test_seed_and_restart_preserve_changes(client):
     state = api.get('/api/state').json()
     assert len(state['candidates']) == 6
     assert [s['id'] for s in state['sources']] == ['66ru', 'e1', 'justmedia', 'kommersant-ural', 'oblgazeta', 'ura']
+    assert state['pipeline']['usage']['configured'] is False
     assert state['pilotAnalytics']['confirmationRate'] == '41%'
     assert state['candidates'][0]['location']['precision'] == 'municipality'
     api.patch('/api/candidates/INV-0261', json={'owner': 'М. Орлова', 'status': 'approved'})
-    with TestClient(create_app(url)) as restarted:
+    with TestClient(create_app(url, worker=False)) as restarted:
         card = restarted.get('/api/candidates/INV-0261').json()
         assert card['owner'] == 'М. Орлова'
         assert card['status'] == 'approved'

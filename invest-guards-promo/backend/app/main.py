@@ -1,6 +1,7 @@
 import csv
 import io
 import logging
+import os
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -11,15 +12,21 @@ from zoneinfo import ZoneInfo
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from . import service
+from .agent import Agent
 from .collectors import collect_source
 from .database import CandidateRecord, ExportRecord, MetadataRecord, initialize, make_engine, session_factory
+from .llm import BudgetExceeded, LlmClient, LlmError
 from .net import http_client
-from .schemas import Candidate, CandidatePatch, DataSource, DocumentOut, ExportResult, NewSignal, PilotAnalytics, State
+from .pipeline import process_pending, stage_counts
+from .schemas import (Candidate, CandidatePatch, ChatReply, ChatRequest, DataSource, DocumentOut, ExportResult, LlmUsage,
+                      NewSignal, PilotAnalytics, State)
+from .worker import start_background
 
 log = logging.getLogger(__name__)
 
@@ -35,16 +42,26 @@ def csv_text(candidates):
     return output.getvalue()
 
 
-def create_app(database_url=None, fetch_transport=None):
+class ProcessRequest(BaseModel):
+    limit: int = Field(default=10, ge=1, le=30)
+
+
+def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_settings=None, worker=None):
     @asynccontextmanager
     async def lifespan(app):
         engine = make_engine(database_url)
+        stop = None
         try:
             initialize(engine)
             app.state.sessions = session_factory(engine)
+            app.state.llm = LlmClient(engine, llm_settings, llm_transport)
             app.state.http = http_client(fetch_transport)
+            if (worker if worker is not None else os.environ.get('PIPELINE_WORKER') == '1'):
+                stop = start_background(app.state.sessions, app.state.llm, app.state.http)
             yield
         finally:
+            if stop:
+                stop.set()
             engine.dispose()
 
     app = FastAPI(title='ИнвестСигнал API', version='0.2.0', lifespan=lifespan,
@@ -74,15 +91,22 @@ def create_app(database_url=None, fetch_transport=None):
     async def conflict(request, error):
         return JSONResponse(status_code=409, content={'detail': str(error)})
 
+    @app.exception_handler(LlmError)
+    async def llm_error(request, error):
+        return JSONResponse(status_code=429 if isinstance(error, BudgetExceeded) else 502, content={'detail': str(error)})
+
+    def pipeline_stats(request, db):
+        return {'stages': stage_counts(db), 'usage': request.app.state.llm.usage()}
+
     @app.get('/api/health')
     def health(db: Session = Depends(session)):
         db.execute(text('SELECT 1'))
         return {'status': 'ok', 'database': 'ok', 'mode': 'demo'}
 
     @app.get('/api/state', response_model=State)
-    def state(db: Session = Depends(session)):
+    def state(request: Request, db: Session = Depends(session)):
         return State(candidates=service.list_candidates(db), sources=service.list_sources(db),
-                     pilotAnalytics=db.get(MetadataRecord, 'pilot_analytics').payload)
+                     pilotAnalytics=db.get(MetadataRecord, 'pilot_analytics').payload, pipeline=pipeline_stats(request, db))
 
     @app.get('/api/candidates', response_model=list[Candidate])
     def candidates(db: Session = Depends(session)):
@@ -118,6 +142,21 @@ def create_app(database_url=None, fetch_transport=None):
                   source: str | None = None, q: str | None = Query(None, max_length=200),
                   limit: int = Query(50, ge=1, le=200), db: Session = Depends(session)):
         return service.list_documents(db, stage, source, q, limit)
+
+    @app.post('/api/pipeline/process', description='Разбирает новые документы ИИ прямо сейчас (тратит бюджет).')
+    def process(input: ProcessRequest, request: Request):
+        request.app.state.llm.ensure_available()
+        return process_pending(request.app.state.sessions, request.app.state.llm, input.limit)
+
+    @app.get('/api/llm/usage', response_model=LlmUsage)
+    def usage(request: Request):
+        return request.app.state.llm.usage()
+
+    @app.post('/api/chat', response_model=ChatReply)
+    def chat(input: ChatRequest, request: Request):
+        agent = Agent(request.app.state.sessions, request.app.state.llm, request.app.state.http)
+        reply, trace, changed = agent.run(input.messages)
+        return ChatReply(reply=reply, trace=trace, changed=changed)
 
     @app.get('/api/analytics', response_model=PilotAnalytics,
              description='Fixed sample pilot metrics, not measured performance.')

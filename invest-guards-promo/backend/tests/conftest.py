@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.database import make_engine
+from app.llm import LlmSettings
 from app.main import create_app
 
 
@@ -25,5 +26,5 @@ def database_url():
 
 @pytest.fixture
 def client(database_url):
-    with TestClient(create_app(database_url)) as api:
+    with TestClient(create_app(database_url, worker=False, llm_settings=LlmSettings())) as api:
         yield api, database_url
