@@ -1,5 +1,15 @@
 name: invest-signal
 
+x-backend-env: &backend-env
+  PGHOST: db
+  PGDATABASE: ${POSTGRES_DB:-investsignal}
+  PGUSER: ${POSTGRES_USER:-investsignal}
+  PGPASSWORD: ${POSTGRES_PASSWORD:-investsignal_demo}
+  LLM_BASE_URL: ${LLM_BASE_URL:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_BUDGET_USD: ${LLM_BUDGET_USD:-45}
+  LLM_DAILY_BUDGET_USD: ${LLM_DAILY_BUDGET_USD:-3}
+
 services:
   frontend:
     build: ./frontend
@@ -18,15 +28,22 @@ services:
 
   backend:
     build: ./backend
-    environment:
-      PGHOST: db
-      PGDATABASE: ${POSTGRES_DB:-investsignal}
-      PGUSER: ${POSTGRES_USER:-investsignal}
-      PGPASSWORD: ${POSTGRES_PASSWORD:-investsignal_demo}
+    environment: *backend-env
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
+
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.worker"]
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      disable: true
 
   db:
     image: postgres:17-alpine
