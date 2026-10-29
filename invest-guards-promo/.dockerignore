@@ -3,3 +3,6 @@
 README.md
 compose.yaml
 DEVELOPMENT_PLAN.md
+.env
+.env.*
+certs/
