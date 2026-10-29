@@ -308,7 +308,9 @@ export default function QueuePage() {
                             <span className="table-secondary">
                               {candidate.city} · {candidate.sector}
                             </span>
-                            <span className="case-id">{candidate.id}</span>
+                            <span className="case-id">
+                              {candidate.id} <OriginChip candidate={candidate} />
+                            </span>
                           </div>
                         </div>
                       </td>
@@ -372,7 +374,9 @@ export default function QueuePage() {
                     </span>
                     <span className="candidate-card-bottom">
                       <Urgency candidate={candidate} />
-                      <span className="case-id">{candidate.id}</span>
+                      <span className="case-id">
+                        {candidate.id} <OriginChip candidate={candidate} />
+                      </span>
                     </span>
                   </button>
                 </li>
@@ -419,6 +423,11 @@ export default function QueuePage() {
       </span>
     </>
   );
+}
+function OriginChip({ candidate }: { candidate: Candidate }) {
+  if (candidate.origin === "ai") return <span className="ai-chip">ИИ</span>;
+  if (candidate.origin === "demo") return <span className="ai-chip demo-chip">Демо</span>;
+  return null;
 }
 function ShieldNote() {
   return <span>Каждое решение — после проверки источников</span>;

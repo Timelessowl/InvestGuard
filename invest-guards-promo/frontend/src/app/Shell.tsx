@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Link,
   NavLink,
@@ -15,10 +15,12 @@ import {
   CircleAlert,
   RotateCw,
   MapPinned,
+  Bot,
 } from "lucide-react";
 import { useApp } from "./AppProvider";
 import { queueMetrics } from "../domain/selectors";
 import { AddSignalDialog } from "../components/AddSignalDialog";
+import { ChatPanel } from "../components/ChatPanel";
 import { Spinner } from "../components/ui";
 import { registerWebMcp } from "../services/webMcp";
 
@@ -42,6 +44,8 @@ export function Shell() {
   const { candidates, loading, loadError, busy, api, mutate, notify, refresh } =
     useApp();
   const [adding, setAdding] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const closeChat = useCallback(() => setChatOpen(false), []);
   const [exporting, setExporting] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -122,9 +126,9 @@ export function Shell() {
         <div className="sidebar-bottom">
           <div className="demo-status">
             <span aria-hidden="true" />
-            Демонстрационный режим
+            Пилот · открытые источники
           </div>
-          <p>Изменения сохраняются на сервере.</p>
+          <p>Сбор и оценка — GigaChat. Решение — за аналитиком.</p>
           <div className="profile">
             <span className="profile-avatar" aria-hidden="true">
               АК
@@ -144,7 +148,14 @@ export function Shell() {
             <strong>{current?.label ?? "ИнвестСигнал"}</strong>
           </div>
           <div className="top-actions">
-            <span className="demo-badge">Демо-данные</span>
+            <button
+              className="button"
+              aria-expanded={chatOpen}
+              onClick={() => setChatOpen((open) => !open)}
+            >
+              <Bot size={17} aria-hidden="true" />
+              <span>Ассистент</span>
+            </button>
             <button
               className="button export-button"
               disabled={
@@ -216,10 +227,11 @@ export function Shell() {
           )}
           <footer className="workspace-footer">
             <span>ИнвестСигнал · Рабочая область аналитика</span>
-            <span>Организации и источники — демонстрационные</span>
+            <span>Карточки с меткой «ИИ» собраны из открытых источников</span>
           </footer>
         </main>
       </div>
+      {chatOpen && <ChatPanel onClose={closeChat} />}
       {adding && (
         <AddSignalDialog
           onClose={() => setAdding(false)}
