@@ -1,7 +1,8 @@
 import { z } from "zod";
 import {
-  candidateSchema, newSignalSchema, sourceSchema, stateSchema,
-  type Candidate, type DataSource, type NewSignal, type WorkspaceState,
+  candidateSchema, chatReplySchema, documentSchema, newSignalSchema, processResultSchema, sourceSchema, stateSchema,
+  type Candidate, type ChatMessage, type ChatReply, type CollectedDocument, type DataSource, type DocumentStage,
+  type NewSignal, type ProcessResult, type WorkspaceState,
 } from "../domain/models";
 
 export type CandidatePatch = Partial<Pick<Candidate, "status" | "owner" | "nextAction">>;
@@ -10,7 +11,10 @@ export interface InvestmentRepository {
   create(input: NewSignal): Promise<Candidate>;
   update(id: string, patch: CandidatePatch): Promise<Candidate>;
   exportApproved(): Promise<{ csv: string; count: number; exportId: string }>;
-  retrySource(id: string): Promise<DataSource>;
+  collectSource(id: string): Promise<{ source: DataSource; added: number }>;
+  processPending(limit: number): Promise<ProcessResult>;
+  documents(stage?: DocumentStage): Promise<CollectedDocument[]>;
+  chat(messages: ChatMessage[]): Promise<ChatReply>;
   subscribe(listener: () => void): () => void;
 }
 
@@ -19,9 +23,9 @@ export class HttpInvestmentRepository implements InvestmentRepository {
     private readonly baseUrl = "/api",
     private readonly fetcher: typeof fetch = (...args) => fetch(...args),
   ) {}
-  private async request<T>(path: string, schema: z.ZodType<T>, method = "GET", body?: unknown): Promise<T> {
+  private async request<T>(path: string, schema: z.ZodType<T>, method = "GET", body?: unknown, timeout = 15000): Promise<T> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
+    const timer = setTimeout(() => controller.abort(), timeout);
     try {
       const response = await this.fetcher(`${this.baseUrl}${path}`, {
         method, signal: controller.signal, cache: "no-store",
@@ -54,8 +58,17 @@ export class HttpInvestmentRepository implements InvestmentRepository {
   exportApproved() {
     return this.request("/exports", z.object({ csv: z.string(), count: z.number().int().positive(), exportId: z.string() }), "POST");
   }
-  retrySource(id: string) {
-    return this.request(`/sources/${encodeURIComponent(id)}/retry`, sourceSchema, "POST");
+  collectSource(id: string) {
+    return this.request(`/sources/${encodeURIComponent(id)}/collect`, z.object({ source: sourceSchema, added: z.number() }), "POST", undefined, 30000);
+  }
+  processPending(limit: number) {
+    return this.request("/pipeline/process", processResultSchema, "POST", { limit }, 120000);
+  }
+  documents(stage?: DocumentStage) {
+    return this.request(`/documents?limit=40${stage ? `&stage=${stage}` : ""}`, documentSchema.array());
+  }
+  chat(messages: ChatMessage[]) {
+    return this.request("/chat", chatReplySchema, "POST", { messages }, 120000);
   }
   subscribe(listener: () => void) {
     // Shared state refreshes without requiring a WebSocket or extra container.
