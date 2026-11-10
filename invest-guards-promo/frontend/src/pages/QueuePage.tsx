@@ -13,7 +13,7 @@ import {
   Building2,
 } from "lucide-react";
 import { useApp } from "../app/AppProvider";
-import { statusLabels, statusSchema, type Candidate } from "../domain/models";
+import { riskLabels, statusLabels, statusSchema, type Candidate } from "../domain/models";
 import {
   filterCandidates,
   projectCount,
@@ -309,7 +309,7 @@ export default function QueuePage() {
                               {candidate.city} · {candidate.sector}
                             </span>
                             <span className="case-id">
-                              {candidate.id} <OriginChip candidate={candidate} />
+                              {candidate.id} <OriginChip candidate={candidate} /> <RiskDot candidate={candidate} />
                             </span>
                           </div>
                         </div>
@@ -375,7 +375,7 @@ export default function QueuePage() {
                     <span className="candidate-card-bottom">
                       <Urgency candidate={candidate} />
                       <span className="case-id">
-                        {candidate.id} <OriginChip candidate={candidate} />
+                        {candidate.id} <OriginChip candidate={candidate} /> <RiskDot candidate={candidate} />
                       </span>
                     </span>
                   </button>
@@ -423,6 +423,11 @@ export default function QueuePage() {
       </span>
     </>
   );
+}
+function RiskDot({ candidate }: { candidate: Candidate }) {
+  if (!candidate.risk) return null;
+  const label = riskLabels[candidate.risk.verdict];
+  return <span className={`risk-mini risk-${candidate.risk.verdict}`} title={`Контур.Фокус: ${label}`} aria-label={`Контур.Фокус: ${label}`} />;
 }
 function OriginChip({ candidate }: { candidate: Candidate }) {
   if (candidate.origin === "ai") return <span className="ai-chip">ИИ</span>;

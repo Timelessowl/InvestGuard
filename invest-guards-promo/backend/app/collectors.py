@@ -14,7 +14,7 @@ from .database import DocumentRecord, SourceRecord
 
 log = logging.getLogger(__name__)
 NS = {'atom': 'http://www.w3.org/2005/Atom'}
-FULL_TEXT_TAGS = ['{http://news.yandex.ru}full-text', '{http://purl.org/rss/1.0/modules/content/}encoded', 'description']
+FULL_TEXT_TAGS = ['{http://news.yandex.ru}full-text', '{http://purl.org/rss/1.0/modules/content/}encoded', 'full-text', 'encoded', 'description']
 MAX_BODY = 6000
 
 
@@ -46,13 +46,32 @@ def node_text(parent, tag, namespaces=None):
     return clean_html(''.join(node.itertext())) if node is not None else ''
 
 
+def parse_root(xml_text):
+    try:
+        return ET.fromstring(xml_text)
+    except ET.ParseError as error:
+        if 'unbound prefix' not in str(error):
+            raise
+        # Some feeds use yandex:/content: tags without declaring the namespace; drop prefixes and retry.
+        return ET.fromstring(re.sub(r'(</?)[A-Za-z_][\w.-]*:', r'\1', re.sub(r'\s[A-Za-z_][\w.-]*:[\w.-]+="[^"]*"', '', xml_text)))
+
+
 def parse_feed(xml_text):
     if '<!ENTITY' in xml_text:
         raise CollectError('Лента содержит DTD-сущности, разбор отклонён.')
+    xml_text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', xml_text)
     try:
-        root = ET.fromstring(re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', xml_text))
+        root = parse_root(xml_text)
     except ET.ParseError as error:
-        raise CollectError(f'Некорректный XML: {error}') from error
+        # One malformed item should not cost the whole feed: parse items one by one and skip the broken ones.
+        root = ET.Element('rss')
+        for block in re.findall(r'<item[\s>].*?</item>', xml_text, re.S):
+            try:
+                root.extend(parse_root(f'<rss>{block}</rss>').iter('item'))
+            except ET.ParseError:
+                continue
+        if not len(root):
+            raise CollectError(f'Некорректный XML: {error}') from error
     items = []
     for item in root.iter('item'):
         bodies = [node_text(item, tag) for tag in FULL_TEXT_TAGS]
@@ -67,38 +86,45 @@ def parse_feed(xml_text):
     return [{**i, 'title': i['title'][:500], 'body': i['body'][:MAX_BODY]} for i in items if i['url'].startswith('http') and i['title']]
 
 
+def fetch_items(payload, http):
+    if payload.get('kind') == 'dzen':
+        from . import dzen
+        return dzen.search(payload.get('queries') or [])
+    response = http.get(payload['url'])
+    response.raise_for_status()
+    return parse_feed(response.text)
+
+
 def collect_source(db, source_id, http):
-    record = db.get(SourceRecord, source_id, with_for_update=True)
+    record = db.get(SourceRecord, source_id)
     if not record:
         raise LookupError(source_id)
-    payload = dict(record.payload)
-    now = datetime.now(timezone.utc)
-    added = 0
+    added, update = 0, {'status': 'active', 'lastError': None}
     try:
-        response = http.get(payload['url'])
-        response.raise_for_status()
-        items = parse_feed(response.text)
+        items = fetch_items(dict(record.payload), http)
         if items:
             result = db.execute(insert(DocumentRecord).values([{'source_id': source_id, **item} for item in items])
                                 .on_conflict_do_nothing(index_elements=['url']).returning(DocumentRecord.id))
             added = len(result.all())
-        payload.update(status='active', lastError=None)
     except (httpx.HTTPError, CollectError) as error:
         message = f'HTTP {error.response.status_code}' if isinstance(error, httpx.HTTPStatusError) else str(error) or type(error).__name__
         log.warning('Source %s failed: %s', source_id, message)
-        payload.update(status='retry', lastError=message[:300])
-    payload.update(lastRun=display_date(), lastRunAt=now.isoformat())
+        update = {'status': 'retry', 'lastError': message[:300]}
+    # Lock the source row only for the status update, not for a slow fetch.
+    db.refresh(record, with_for_update=True)
+    payload = {**record.payload, **update, 'lastRun': display_date(), 'lastRunAt': datetime.now(timezone.utc).isoformat()}
     record.payload = payload
     db.commit()
     return payload, added
 
 
-def due_sources(db):
+def due_sources(db, kinds=('rss',)):
     now = datetime.now(timezone.utc)
     due = []
     for record in db.scalars(select(SourceRecord).order_by(SourceRecord.id)):
         payload = record.payload
         last = payload.get('lastRunAt')
-        if payload.get('enabled', True) and (not last or (now - datetime.fromisoformat(last)).total_seconds() >= payload.get('scheduleMinutes', 60) * 60):
+        if (payload.get('enabled', True) and payload.get('kind', 'rss') in kinds
+                and (not last or (now - datetime.fromisoformat(last)).total_seconds() >= payload.get('scheduleMinutes', 60) * 60)):
             due.append(record.id)
     return due

@@ -25,6 +25,12 @@ class BudgetExceeded(LlmError):
     pass
 
 
+class LlmRefusal(LlmError):
+    pass
+
+
+
+
 @dataclass
 class LlmSettings:
     base_url: str = ''
@@ -125,6 +131,9 @@ class LlmClient:
 
     def chat_json(self, messages, schema, *, purpose, model=None, max_tokens=800):
         content = self.chat(messages, purpose=purpose, model=model, schema=schema, max_tokens=max_tokens).get('content') or ''
+        # GigaChat's topic filter answers with canned prose instead of JSON; retrying the same text does not help.
+        if content.strip() and not content.lstrip().startswith(('{', '`')):
+            raise LlmRefusal(f'GigaChat отказался разбирать текст: «{content.strip()[:80]}…»')
         try:
             return json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', content.strip()))
         except json.JSONDecodeError as error:

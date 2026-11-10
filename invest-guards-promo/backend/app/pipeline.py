@@ -6,10 +6,12 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, text
 
+from . import clickbait
 from .common import display_date, initials, normalize_company, overall_score, urgency_for
 from .database import CandidateRecord, DocumentRecord, SourceRecord, insert_candidate
+from .focus import FocusError, valid_inn
 from .geo import REGION_RE, canonical_municipality, lookup
-from .llm import BudgetExceeded, LlmError
+from .llm import BudgetExceeded, LlmError, LlmRefusal
 from .schemas import Candidate, Evidence
 
 log = logging.getLogger(__name__)
@@ -30,9 +32,9 @@ TRIAGE_SCHEMA = {'type': 'object', 'additionalProperties': False, 'properties': 
     'is_investment_signal': {'type': 'boolean'}, 'in_sverdlovsk_region': {'type': 'boolean'},
     'company': {'type': 'string'}, 'municipality': {'type': 'string'}, 'signal_title': {'type': 'string'},
     'signal_type': {'type': 'string', 'enum': SIGNAL_TYPES}, 'amount_rub': {'type': ['number', 'null']},
-    'key_quote': {'type': 'string'}, 'confidence': {'type': 'integer'}, 'reason': {'type': 'string'}},
+    'key_quote': {'type': 'string'}, 'confidence': {'type': 'integer'}, 'reason': {'type': 'string'}, 'inn': {'type': 'string'}},
     'required': ['is_investment_signal', 'in_sverdlovsk_region', 'company', 'municipality', 'signal_title', 'signal_type',
-                 'amount_rub', 'key_quote', 'confidence', 'reason']}
+                 'amount_rub', 'key_quote', 'confidence', 'reason', 'inn']}
 TRIAGE_PROMPT = (
     'Ты аналитик Корпорации развития Среднего Урала. Найди в тексте сигнал о конкретном инвестиционном проекте бизнеса '
     'в Свердловской области: строительство или расширение производства, логистического, агро- или энергетического объекта, '
@@ -44,7 +46,7 @@ TRIAGE_PROMPT = (
     '(не министерство, фонд или администрация) или пустая строка. '
     'municipality — город или округ в именительном падеже. signal_title — суть сигнала до 90 символов. '
     'key_quote — дословный фрагмент текста до 300 символов. confidence — 0–100, насколько текст уверенно описывает проект. '
-    'reason — одно короткое предложение, почему это сигнал или нет.')
+    'reason — одно короткое предложение, почему это сигнал или нет. inn — ИНН компании, только если он прямо указан в тексте, иначе пустая строка.')
 
 SCORE_SCHEMA = {'type': 'object', 'additionalProperties': False, 'properties': {
     'company': {'type': 'string'}, 'sector': {'type': 'string', 'enum': SECTORS}, 'summary': {'type': 'string'},
@@ -65,7 +67,21 @@ SCORE_PROMPT = (
     'Пиши по-русски, кратко, без выдумок.')
 
 
-def prefilter(title, body, regional):
+INN_RE = re.compile(r'\bИНН\D{0,5}(\d{12}|\d{10})\b')
+
+
+def find_inn(*texts):
+    for value in texts:
+        for candidate in [value] + INN_RE.findall(value or ''):
+            if valid_inn((candidate or '').strip()):
+                return candidate.strip()
+    return None
+
+
+def prefilter(title, body, regional, strict_clickbait=False):
+    bait = clickbait.verdict(title, strict=strict_clickbait)
+    if bait:
+        return bait
     content = f'{title} {body}'
     hits = {match.group(0).lower()[:6] for match in INVEST_RE.finditer(content)}
     if len(hits) < 2:
@@ -145,10 +161,24 @@ def finish(doc, stage, reason, candidate_number=None):
         doc.candidate_number = candidate_number
 
 
-def process_document(db, llm, doc, sources):
+def enrich(record, inn, focus):
+    """Store the initiator's INN on the card and, when Focus auto-checks are on, its risk report."""
+    if not inn:
+        return
+    payload = dict(record.payload)
+    payload['inn'] = payload.get('inn') or inn
+    if focus and focus.settings.configured and focus.settings.auto_check and not payload.get('risk'):
+        try:
+            payload['risk'] = focus.check(payload['inn'])
+        except FocusError as error:
+            log.warning('Focus check for %s failed: %s', record.number, error)
+    record.payload = payload
+
+
+def process_document(db, llm, doc, sources, focus=None):
     source = sources.get(doc.source_id, {})
     source_name = source.get('name', doc.source_id)
-    skip = prefilter(doc.title, doc.body, source.get('regional', True))
+    skip = prefilter(doc.title, doc.body, source.get('regional', True), source.get('kind') == 'dzen')
     if skip:
         return finish(doc, 'skipped', skip)
     if doc.embedding is None:
@@ -177,15 +207,17 @@ def process_document(db, llm, doc, sources):
     if existing:
         db.refresh(existing, with_for_update=True)
         attach_evidence(existing, evidence_for(doc, source_name, triage['key_quote']))
+        enrich(existing, find_inn(triage.get('inn', ''), doc.title, doc.body), focus)
         return finish(doc, 'merged', f'Добавлено к {existing.payload["id"]}', existing.number)
     card = llm.chat_json([{'role': 'system', 'content': SCORE_PROMPT},
                           {'role': 'user', 'content': f'{document_prompt(doc, source_name)}\n\nИзвлечённые факты: {json.dumps(triage, ensure_ascii=False)}'}],
                          SCORE_SCHEMA, purpose='scoring', model=llm.settings.smart_model, max_tokens=900)
     record = insert_candidate(db, build_candidate(doc, source_name, triage, card))
+    enrich(record, find_inn(triage.get('inn', ''), doc.title, doc.body), focus)
     return finish(doc, 'signal', f'Создана карточка {record.payload["id"]}', record.number)
 
 
-def process_pending(sessions, llm, limit=20):
+def process_pending(sessions, llm, limit=20, focus=None):
     """Process up to `limit` new documents; an advisory lock keeps it single-runner."""
     counts = {'processed': 0, 'skipped': 0, 'rejected': 0, 'signal': 0, 'merged': 0, 'error': 0}
     with sessions() as lock:
@@ -202,10 +234,12 @@ def process_pending(sessions, llm, limit=20):
                     if doc is None or doc.stage != 'new':
                         continue
                     try:
-                        process_document(db, llm, doc, sources)
+                        process_document(db, llm, doc, sources, focus)
                     except BudgetExceeded as error:
                         db.rollback()
                         return {**counts, 'stopped': str(error)}
+                    except LlmRefusal as error:
+                        finish(doc, 'rejected', str(error))
                     except (LlmError, KeyError, TypeError, ValueError) as error:
                         db.rollback()
                         doc = db.get(DocumentRecord, doc_id, with_for_update=True)

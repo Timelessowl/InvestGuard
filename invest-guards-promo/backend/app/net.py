@@ -18,7 +18,7 @@ def ssl_context():
     return context
 
 
-def http_client(transport=None, timeout=20.0):
+def http_client(transport=None, timeout=45.0):
     # trust_env=False: connect directly, ignoring system HTTP(S)_PROXY.
     return httpx.Client(transport=transport, verify=ssl_context(), trust_env=False, timeout=timeout,
                         follow_redirects=True, headers={'User-Agent': USER_AGENT})

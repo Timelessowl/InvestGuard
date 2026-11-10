@@ -5,6 +5,7 @@ from sqlalchemy import func, or_, select, text
 
 from .common import display_date, initials
 from .database import CandidateRecord, DocumentRecord, SourceRecord, insert_candidate
+from .focus import FocusInputError
 from .schemas import Candidate, CandidatePatch, DataSource, DocumentOut, NewSignal
 
 
@@ -93,3 +94,21 @@ def list_documents(db, stage=None, source_id=None, query=None, limit=50):
 
 def document_total(db):
     return db.scalar(select(func.count()).select_from(DocumentRecord))
+
+
+def check_candidate(db, focus, candidate_id, inn=None, force=False):
+    """Run the Kontur.Focus check for the card's initiator; the HTTP calls happen before the row is locked."""
+    number = candidate_number(candidate_id)
+    current = db.get(CandidateRecord, number)
+    if not current:
+        raise NotFound('Карточка не найдена.')
+    inn = inn or current.payload.get('inn')
+    if not inn:
+        raise FocusInputError('Укажите ИНН компании-инициатора.')
+    risk = focus.check(inn, force=force)
+    db.rollback()
+    record = db.scalar(select(CandidateRecord).where(CandidateRecord.number == number).with_for_update())
+    record.payload = {**record.payload, 'inn': inn, 'risk': risk}
+    record.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return Candidate.model_validate(record.payload)

@@ -15,6 +15,7 @@ export interface InvestmentRepository {
   processPending(limit: number): Promise<ProcessResult>;
   documents(stage?: DocumentStage): Promise<CollectedDocument[]>;
   chat(messages: ChatMessage[]): Promise<ChatReply>;
+  riskCheck(id: string, inn?: string, force?: boolean): Promise<Candidate>;
   subscribe(listener: () => void): () => void;
 }
 
@@ -69,6 +70,9 @@ export class HttpInvestmentRepository implements InvestmentRepository {
   }
   chat(messages: ChatMessage[]) {
     return this.request("/chat", chatReplySchema, "POST", { messages }, 120000);
+  }
+  riskCheck(id: string, inn?: string, force = false) {
+    return this.request(`/candidates/${encodeURIComponent(id)}/risk-check`, candidateSchema, "POST", { ...(inn ? { inn } : {}), force }, 90000);
   }
   subscribe(listener: () => void) {
     // Shared state refreshes without requiring a WebSocket or extra container.

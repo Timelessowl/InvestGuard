@@ -15,6 +15,7 @@ import {
 } from "../domain/models";
 import { useApp } from "../app/AppProvider";
 import { BarChart, CloseButton, Modal, Spinner, StatusBadge } from "./ui";
+import { RiskBadge, RiskPanel } from "./RiskPanel";
 
 function Excerpt({ text, highlights }: { text: string; highlights: string[] }) {
   // Render untrusted excerpts as React text; mark only known text segments, never HTML.
@@ -122,7 +123,10 @@ export function CandidateDialog({
           <p>
             {candidate.sector} · {candidate.city}
           </p>
-          <StatusBadge status={candidate.status} />
+          <span className="inline-actions">
+            <StatusBadge status={candidate.status} />
+            {candidate.risk && <RiskBadge verdict={candidate.risk.verdict} />}
+          </span>
         </div>
         <CloseButton onClick={close} label="Закрыть карточку" />
       </header>
@@ -199,6 +203,7 @@ export function CandidateDialog({
             ))}
           </div>
         </section>
+        <RiskPanel candidate={candidate} />
         <section className="detail-section">
           <h3>Следующий шаг</h3>
           <div className="recommendation">
