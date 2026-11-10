@@ -128,7 +128,8 @@ class Agent:
         with self.sessions() as db:
             candidate = service.check_candidate(db, self.focus, id, inn or None, bool(force))
         risk = candidate.risk.model_dump()
-        return {'id': candidate.id, 'inn': candidate.inn, 'company': risk['company'], 'status': risk['status'], 'verdict': risk['verdict'],
+        zones = {'red': 'красная зона', 'yellow': 'жёлтая зона', 'green': 'зелёная зона'}
+        return {'id': candidate.id, 'inn': candidate.inn, 'company': risk['company'], 'status': risk['status'], 'verdict': zones[risk['verdict']],
                 'flags': [{k: f[k] for k in ('level', 'title', 'detail')} for f in risk['flags']], 'ratings': risk['ratings']}
 
     def call(self, name, arguments):
@@ -179,8 +180,7 @@ def summarize(name, result):
     if name == 'process_documents':
         return f'Разобрано {result.get("processed", 0)}, новых карточек {result.get("signal", 0)}'
     if name == 'check_company':
-        labels = {'red': 'красный', 'yellow': 'жёлтый', 'green': 'зелёный'}
-        return f'{result["company"]}: {labels[result["verdict"]]}, флагов риска {sum(f["level"] != "green" for f in result["flags"])}'
+        return f'{result["company"]}: {result["verdict"]}, флагов риска {sum(f["level"] != "green" for f in result["flags"])}'
     if name == 'pipeline_status':
         return f'Потрачено ${result["llm_usage"]["spentUsd"]:.2f} из ${result["llm_usage"]["budgetUsd"]:.0f}'
     return 'Готово'

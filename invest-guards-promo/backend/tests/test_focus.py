@@ -99,5 +99,5 @@ def test_assistant_checks_company(database_url):
                      focus_transport=httpx.MockTransport(focus), focus_settings=FocusSettings(api_key='test-key'))
     with TestClient(app) as api:
         reply = api.post('/api/chat', json={'messages': [{'role': 'user', 'content': 'Проверь инициатора INV-0261, ИНН 7707083893'}]}).json()
-        assert reply['changed'] and reply['trace'][0]['summary'].startswith('ООО "Рога и копыта": красный')
+        assert reply['changed'] and reply['trace'][0]['summary'].startswith('ООО "Рога и копыта": красная зона')
         assert api.get('/api/candidates/INV-0261').json()['risk']['verdict'] == 'red'
