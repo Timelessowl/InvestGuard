@@ -240,6 +240,8 @@ span {
 }
 .nav-count {
   margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 1px 7px;
   font-size: 11px;
   border-radius: 5px;
