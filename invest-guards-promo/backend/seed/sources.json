@@ -4,5 +4,20 @@
   {"id": "justmedia", "name": "JustMedia", "category": "Региональные СМИ", "url": "https://www.justmedia.ru/rss", "regional": true, "scheduleMinutes": 60},
   {"id": "66ru", "name": "66.ru", "category": "Городские СМИ", "url": "https://66.ru/rss/", "regional": true, "scheduleMinutes": 60},
   {"id": "e1", "name": "E1.ru", "category": "Городские СМИ", "url": "https://www.e1.ru/text/rss.xml", "regional": true, "scheduleMinutes": 60},
-  {"id": "ura", "name": "URA.news", "category": "СМИ УрФО", "url": "https://ura.news/rss", "regional": false, "scheduleMinutes": 60}
+  {"id": "ura", "name": "URA.news", "category": "СМИ УрФО", "url": "https://ura.news/rss", "regional": false, "scheduleMinutes": 60},
+  {"id": "aif-ural", "name": "АиФ-Урал", "category": "Региональные СМИ", "url": "https://ural.aif.ru/rss/all.php", "regional": false, "scheduleMinutes": 60},
+  {"id": "veved", "name": "Вечерние ведомости", "category": "Городские СМИ", "url": "https://veved.ru/rss.xml", "regional": true, "scheduleMinutes": 60},
+  {"id": "uralinform", "name": "Уралинформбюро", "category": "СМИ УрФО", "url": "https://uralinform.ru/rss/all.rss", "regional": false, "scheduleMinutes": 120},
+  {"id": "rbc", "name": "РБК", "category": "Федеральные СМИ", "url": "https://rssexport.rbc.ru/rbcnews/news/30/full.rss", "regional": false, "scheduleMinutes": 60},
+  {"id": "interfax", "name": "Интерфакс", "category": "Федеральные СМИ", "url": "https://www.interfax.ru/rss.asp", "regional": false, "scheduleMinutes": 60},
+  {"id": "vedomosti", "name": "Ведомости", "category": "Федеральные СМИ", "url": "https://www.vedomosti.ru/rss/news", "regional": false, "scheduleMinutes": 60},
+  {"id": "kommersant-economics", "name": "Коммерсантъ · Экономика", "category": "Федеральные СМИ", "url": "https://www.kommersant.ru/RSS/section-economics.xml", "regional": false, "scheduleMinutes": 120},
+  {"id": "ria", "name": "РИА Новости", "category": "Федеральные СМИ", "url": "https://ria.ru/export/rss2/archive/index.xml", "regional": false, "scheduleMinutes": 60},
+  {"id": "rg", "name": "Российская газета", "category": "Федеральные СМИ", "url": "https://rg.ru/xml/index.xml", "regional": false, "scheduleMinutes": 120},
+  {"id": "stroygaz", "name": "Стройгазета", "category": "Отраслевые порталы", "url": "https://www.stroygaz.ru/rss/", "regional": false, "scheduleMinutes": 180},
+  {"id": "agroinvestor", "name": "Агроинвестор", "category": "Отраслевые порталы", "url": "https://www.agroinvestor.ru/feed/public-agroinvestor-articles.xml", "regional": false, "scheduleMinutes": 240},
+  {"id": "cnews", "name": "CNews", "category": "Отраслевые порталы", "url": "https://www.cnews.ru/inc/rss/news.xml", "regional": false, "scheduleMinutes": 180},
+  {"id": "dzen", "name": "Яндекс Дзен", "category": "Дзен", "kind": "dzen", "url": "https://dzen.ru/search", "regional": false, "scheduleMinutes": 240,
+   "queries": ["завод Свердловская область", "новое производство Екатеринбург", "инвестиционный проект Свердловская область",
+               "строительство цеха Урал", "Титановая долина резидент"]}
 ]

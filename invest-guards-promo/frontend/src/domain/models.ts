@@ -63,6 +63,29 @@ export const candidateSchema = z.object({
     }),
   ),
   origin: z.enum(["demo", "manual", "ai"]).default("demo"),
+  inn: z.string().nullable().default(null),
+  risk: z
+    .object({
+      verdict: z.enum(["red", "yellow", "green"]),
+      inn: z.string(),
+      company: z.string().default(""),
+      status: z.string().default(""),
+      flags: z.array(
+        z.object({
+          level: z.enum(["red", "yellow", "green"]),
+          code: z.string(),
+          title: z.string(),
+          detail: z.string().default(""),
+        }),
+      ),
+      ratings: z
+        .array(z.object({ model: z.string(), rating: z.number(), level: z.string() }))
+        .default([]),
+      checkedAt: z.string(),
+      source: z.string().default("Контур.Фокус"),
+    })
+    .nullable()
+    .default(null),
 });
 export type Candidate = z.infer<typeof candidateSchema>;
 export const newSignalSchema = z.object({
@@ -94,6 +117,7 @@ export const sourceSchema = z.object({
   name: z.string(),
   category: z.string(),
   url: z.string().default(""),
+  kind: z.enum(["rss", "dzen"]).default("rss"),
   schedule: z.string(),
   documents: z.number(),
   signals: z.number().default(0),
@@ -142,6 +166,10 @@ export type LlmUsage = z.infer<typeof llmUsageSchema>;
 export const pipelineSchema = z.object({
   stages: z.record(z.string(), z.number()),
   usage: llmUsageSchema,
+  focus: z
+    .object({ configured: z.boolean(), used: z.number(), limit: z.number() })
+    .nullable()
+    .default(null),
 });
 export type PipelineStats = z.infer<typeof pipelineSchema>;
 export const documentSchema = z.object({
@@ -204,3 +232,9 @@ export const sectorOptions = [
   "Пищевая промышленность",
   "Строительные материалы",
 ];
+export type RiskReport = NonNullable<Candidate["risk"]>;
+export const riskLabels: Record<RiskReport["verdict"], string> = {
+  red: "Красная зона",
+  yellow: "Жёлтая зона",
+  green: "Зелёная зона",
+};

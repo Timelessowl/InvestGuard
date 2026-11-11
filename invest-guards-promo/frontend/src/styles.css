@@ -240,6 +240,8 @@ span {
 }
 .nav-count {
   margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 1px 7px;
   font-size: 11px;
   border-radius: 5px;
@@ -1968,4 +1970,96 @@ mark {
   background: var(--surface-muted);
   color: var(--text-subtle);
   border: 1px solid var(--border);
+}
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 650;
+}
+.risk-red {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.risk-yellow {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.risk-green {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.risk-mini {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.risk-mini.risk-red {
+  background: var(--danger);
+}
+.risk-mini.risk-yellow {
+  background: #d99a1e;
+}
+.risk-mini.risk-green {
+  background: var(--success);
+}
+.risk-summary {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.risk-summary > div,
+.risk-flag > span:last-child {
+  display: flex;
+  flex-direction: column;
+}
+.risk-flags {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.risk-flag {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  font-size: 12px;
+}
+.risk-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+}
+.risk-flag-red .risk-dot {
+  background: var(--danger);
+}
+.risk-flag-yellow .risk-dot {
+  background: #d99a1e;
+}
+.risk-flag-green .risk-dot {
+  background: var(--success);
+}
+.risk-ratings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.risk-form {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.risk-form .field {
+  flex: 1;
 }

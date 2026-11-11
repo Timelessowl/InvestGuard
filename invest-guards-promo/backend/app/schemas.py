@@ -46,6 +46,32 @@ class Candidate(BaseModel):
     nextAction: Action = 'Связаться с компанией'
     evidence: list[Evidence]
     origin: Literal['demo', 'manual', 'ai'] = 'demo'
+    inn: str | None = None
+    risk: 'RiskReport | None' = None
+
+
+class RiskFlag(BaseModel):
+    level: Literal['red', 'yellow', 'green']
+    code: str
+    title: str
+    detail: str = ''
+
+
+class RiskRating(BaseModel):
+    model: str
+    rating: float
+    level: str
+
+
+class RiskReport(BaseModel):
+    verdict: Literal['red', 'yellow', 'green']
+    inn: str
+    company: str = ''
+    status: str = ''
+    flags: list[RiskFlag]
+    ratings: list[RiskRating] = Field(default_factory=list)
+    checkedAt: str
+    source: str = 'Контур.Фокус'
 
 
 class NewSignal(BaseModel):
@@ -79,6 +105,8 @@ class SourceConfig(BaseModel):
     regional: bool
     scheduleMinutes: int = Field(ge=5)
     enabled: bool = True
+    kind: Literal['rss', 'dzen'] = 'rss'
+    queries: list[str] = Field(default_factory=list)
 
 
 class DataSource(BaseModel):
@@ -89,6 +117,7 @@ class DataSource(BaseModel):
     regional: bool = True
     scheduleMinutes: int = 60
     enabled: bool = True
+    kind: Literal['rss', 'dzen'] = 'rss'
     schedule: str
     documents: int = Field(ge=0)
     signals: int = Field(default=0, ge=0)
@@ -121,9 +150,22 @@ class LlmUsage(BaseModel):
     configured: bool
 
 
+class FocusUsage(BaseModel):
+    configured: bool
+    used: int
+    limit: int
+
+
 class PipelineStats(BaseModel):
     stages: dict[str, int]
     usage: LlmUsage
+    focus: FocusUsage | None = None
+
+
+class RiskCheckRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    inn: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r'^(\d{10}|\d{12})$')] | None = None
+    force: bool = False
 
 
 class ChatMessage(BaseModel):
@@ -172,3 +214,6 @@ class ExportResult(BaseModel):
     csv: str
     count: int
     exportId: str
+
+
+Candidate.model_rebuild()

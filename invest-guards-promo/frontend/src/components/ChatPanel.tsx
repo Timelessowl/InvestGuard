@@ -23,6 +23,7 @@ const toolLabels: Record<string, string> = {
   pipeline_status: "Состояние конвейера",
   collect_sources: "Сбор источников",
   process_documents: "Разбор документов",
+  check_company: "Проверка в Контур.Фокусе",
 };
 
 function loadHistory(): Entry[] {

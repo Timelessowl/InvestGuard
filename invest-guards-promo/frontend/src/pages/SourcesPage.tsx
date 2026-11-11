@@ -116,9 +116,10 @@ export default function SourcesPage() {
           label="Бюджет ИИ"
           value={usage?.configured ? `$${usage.spentUsd.toFixed(2)}` : "—"}
           note={
-            usage?.configured
+            (usage?.configured
               ? `из $${usage.budgetUsd.toFixed(0)} · сегодня $${usage.todayUsd.toFixed(2)} из $${usage.dailyBudgetUsd.toFixed(0)}`
-              : "ИИ не настроен на сервере"
+              : "ИИ не настроен на сервере") +
+            (pipeline?.focus?.configured ? ` · Фокус: ${pipeline.focus.used} из ${pipeline.focus.limit} компаний` : "")
           }
         />
       </div>
@@ -139,6 +140,7 @@ export default function SourcesPage() {
                     </h3>
                     <p>
                       {source.category} · {source.schedule}
+                      {source.kind === "dzen" && " · поиск через браузер, фильтр кликбейта"}
                     </p>
                   </div>
                   <span className={`source-health ${source.status === "active" ? "health-active" : "health-warning"}`}>
