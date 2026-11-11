@@ -53,7 +53,10 @@ services:
     build: ./backend
     image: invest-signal-backend:local
     init: true
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      AUTH_USERNAME: ${AUTH_USERNAME:-poc_user}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
     volumes: *backend-volumes
     depends_on:
       db:

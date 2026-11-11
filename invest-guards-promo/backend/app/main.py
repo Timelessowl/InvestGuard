@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from . import service
 from .agent import Agent
+from .auth import AuthSettings
 from .collectors import collect_source
 from .focus import FocusClient, FocusError, FocusInputError, FocusLimitExceeded
 from .database import CandidateRecord, ExportRecord, MetadataRecord, initialize, make_engine, session_factory
@@ -54,6 +55,8 @@ def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_
                focus_transport=None, focus_settings=None):
     @asynccontextmanager
     async def lifespan(app):
+        # Fail closed before connecting to the database or starting model work.
+        app.state.auth = AuthSettings.from_env()
         engine = make_engine(database_url)
         stop = None
         try:
@@ -72,6 +75,16 @@ def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_
 
     app = FastAPI(title='ИнвестСигнал API', version='0.2.0', lifespan=lifespan,
                   docs_url='/api/docs', openapi_url='/api/openapi.json', redoc_url=None)
+
+    @app.middleware('http')
+    async def authenticate(request: Request, call_next):
+        if request.url.path != '/api/health':
+            try:
+                await request.app.state.auth.verify(request)
+            except HTTPException as error:
+                return JSONResponse(status_code=error.status_code, content={'detail': error.detail},
+                                    headers={**(error.headers or {}), 'Cache-Control': 'no-store'})
+        return await call_next(request)
 
     def session(request: Request):
         with request.app.state.sessions() as db:
@@ -113,6 +126,10 @@ def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_
     def health(db: Session = Depends(session)):
         db.execute(text('SELECT 1'))
         return {'status': 'ok', 'database': 'ok', 'mode': 'demo'}
+
+    @app.get('/api/auth/check', include_in_schema=False, status_code=204)
+    def auth_check():
+        return Response(status_code=204, headers={'Cache-Control': 'no-store'})
 
     @app.get('/api/state', response_model=State)
     def state(request: Request, db: Session = Depends(session)):
