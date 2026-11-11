@@ -1,42 +1,8 @@
 [
-  {
-    "id": "procurement",
-    "name": "ЕИС Закупки",
-    "category": "Закупки",
-    "schedule": "Каждые 30 минут",
-    "documents": 486,
-    "lastRun": "24 сен, 09:42",
-    "status": "active",
-    "share": 24
-  },
-  {
-    "id": "gisp",
-    "name": "ГИСП",
-    "category": "Отчётность",
-    "schedule": "Каждые 2 часа",
-    "documents": 173,
-    "lastRun": "24 сен, 09:26",
-    "status": "active",
-    "share": 19
-  },
-  {
-    "id": "news",
-    "name": "Региональные СМИ",
-    "category": "Новости",
-    "schedule": "Каждый час",
-    "documents": 412,
-    "lastRun": "24 сен, 09:09",
-    "status": "active",
-    "share": 38
-  },
-  {
-    "id": "jobs",
-    "name": "Порталы вакансий",
-    "category": "Вакансии",
-    "schedule": "Каждые 4 часа",
-    "documents": 213,
-    "lastRun": "24 сен, 08:50",
-    "status": "retry",
-    "share": 19
-  }
+  {"id": "oblgazeta", "name": "Областная газета", "category": "Региональные СМИ", "url": "https://www.oblgazeta.ru/rss/", "regional": true, "scheduleMinutes": 60},
+  {"id": "kommersant-ural", "name": "Коммерсантъ-Урал", "category": "Деловые СМИ", "url": "https://www.kommersant.ru/RSS/regions/ekaterinburg_all.xml", "regional": false, "scheduleMinutes": 60},
+  {"id": "justmedia", "name": "JustMedia", "category": "Региональные СМИ", "url": "https://www.justmedia.ru/rss", "regional": true, "scheduleMinutes": 60},
+  {"id": "66ru", "name": "66.ru", "category": "Городские СМИ", "url": "https://66.ru/rss/", "regional": true, "scheduleMinutes": 60},
+  {"id": "e1", "name": "E1.ru", "category": "Городские СМИ", "url": "https://www.e1.ru/text/rss.xml", "regional": true, "scheduleMinutes": 60},
+  {"id": "ura", "name": "URA.news", "category": "СМИ УрФО", "url": "https://ura.news/rss", "regional": false, "scheduleMinutes": 60}
 ]

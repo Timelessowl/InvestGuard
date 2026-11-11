@@ -8,13 +8,14 @@ import {
   type ReactNode,
 } from "react";
 import { X, CircleCheck, CircleAlert } from "lucide-react";
-import type { Candidate, DataSource, PilotAnalytics } from "../domain/models";
+import type { Candidate, DataSource, PilotAnalytics, PipelineStats } from "../domain/models";
 import { repository, type InvestmentRepository } from "../services/repository";
 
 interface AppContextValue {
   candidates: Candidate[];
   sources: DataSource[];
   pilotAnalytics: PilotAnalytics | null;
+  pipeline: PipelineStats | null;
   loading: boolean;
   loadError: string | null;
   busy: boolean;
@@ -28,6 +29,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [sources, setSources] = useState<DataSource[]>([]);
   const [pilotAnalytics, setPilotAnalytics] = useState<PilotAnalytics | null>(null);
+  const [pipeline, setPipeline] = useState<PipelineStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,6 +47,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCandidates(result.candidates);
       setSources(result.sources);
       setPilotAnalytics(result.pilotAnalytics);
+      setPipeline(result.pipeline);
       setLoadError(null);
     } catch (error) {
       if (request.current === ticket)
@@ -111,6 +114,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         candidates,
         sources,
         pilotAnalytics,
+        pipeline,
         loading,
         loadError,
         busy,

@@ -116,6 +116,7 @@ export function CandidateDialog({
         <div>
           <span className="eyebrow">
             {candidate.id} · {candidate.signalType}
+            {candidate.origin === "ai" && <span className="ai-chip">ИИ</span>}
           </span>
           <h2 id="candidate-title">{candidate.company}</h2>
           <p>
@@ -162,7 +163,9 @@ export function CandidateDialog({
             suffix=""
           />
           <p className="helper">
-            Предварительная оценка по демо-модели. Решение принимает эксперт.
+            {candidate.origin === "ai"
+              ? `Оценка GigaChat по ${candidate.evidence.length} ${candidate.evidence.length === 1 ? "источнику" : "источникам"}. Решение принимает эксперт.`
+              : "Предварительная оценка по демо-модели. Решение принимает эксперт."}
           </p>
         </section>
         <section className="detail-section">
@@ -175,7 +178,15 @@ export function CandidateDialog({
             {candidate.evidence.map((evidence, index) => (
               <article className="evidence" key={index}>
                 <div className="evidence-meta">
-                  <strong>{evidence.source}</strong>
+                  <strong>
+                    {evidence.url ? (
+                      <a href={evidence.url} target="_blank" rel="noreferrer noopener">
+                        {evidence.source}
+                      </a>
+                    ) : (
+                      evidence.source
+                    )}
+                  </strong>
                   <span>{evidence.date}</span>
                 </div>
                 <p>
@@ -267,7 +278,7 @@ export function CandidateDialog({
       <footer className="dialog-footer decision-footer">
         <button
           className="button button-danger"
-          disabled={busy || candidate.status === "rejected"}
+          disabled={busy || candidate.status === "rejected" || candidate.status === "exported"}
           onClick={() => setRejectConfirm(true)}
         >
           <X size={17} aria-hidden="true" />
@@ -275,7 +286,7 @@ export function CandidateDialog({
         </button>
         <button
           className="button"
-          disabled={busy || candidate.status === "review"}
+          disabled={busy || candidate.status === "review" || candidate.status === "exported"}
           onClick={() => void decide("review")}
         >
           {pending === "review" ? (

@@ -6,3 +6,5 @@ coverage
 .git
 docs
 *.local
+.env
+.env.*

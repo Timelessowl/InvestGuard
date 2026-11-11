@@ -18,6 +18,7 @@ class Evidence(BaseModel):
     date: str
     excerpt: str
     highlights: list[str] = Field(default_factory=list)
+    url: str | None = None
 
 
 class Candidate(BaseModel):
@@ -44,6 +45,7 @@ class Candidate(BaseModel):
     rationale: str
     nextAction: Action = 'Связаться с компанией'
     evidence: list[Evidence]
+    origin: Literal['demo', 'manual', 'ai'] = 'demo'
 
 
 class NewSignal(BaseModel):
@@ -68,15 +70,82 @@ class CandidatePatch(BaseModel):
         return self
 
 
+class SourceConfig(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    id: str
+    name: str
+    category: str
+    url: str
+    regional: bool
+    scheduleMinutes: int = Field(ge=5)
+    enabled: bool = True
+
+
 class DataSource(BaseModel):
     id: str
     name: str
     category: str
+    url: str = ''
+    regional: bool = True
+    scheduleMinutes: int = 60
+    enabled: bool = True
     schedule: str
     documents: int = Field(ge=0)
+    signals: int = Field(default=0, ge=0)
     lastRun: str
+    lastRunAt: str | None = None
+    lastError: str | None = None
     status: Literal['active', 'retry']
     share: float = Field(ge=0, le=100)
+
+
+class DocumentOut(BaseModel):
+    id: int
+    sourceId: str
+    url: str
+    title: str
+    publishedAt: str | None
+    collectedAt: str
+    stage: Literal['new', 'skipped', 'rejected', 'signal', 'merged', 'error']
+    reason: str | None
+    candidateId: str | None
+
+
+class LlmUsage(BaseModel):
+    spentUsd: float
+    todayUsd: float
+    budgetUsd: float
+    dailyBudgetUsd: float
+    calls: int
+    byPurpose: dict[str, float]
+    configured: bool
+
+
+class PipelineStats(BaseModel):
+    stages: dict[str, int]
+    usage: LlmUsage
+
+
+class ChatMessage(BaseModel):
+    role: Literal['user', 'assistant']
+    content: Annotated[str, StringConstraints(max_length=8000)]
+
+
+class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    messages: list[ChatMessage] = Field(min_length=1, max_length=40)
+
+
+class ToolTrace(BaseModel):
+    name: str
+    arguments: dict
+    summary: str
+
+
+class ChatReply(BaseModel):
+    reply: str
+    trace: list[ToolTrace]
+    changed: bool
 
 
 class AnalyticsSignal(BaseModel):
@@ -96,6 +165,7 @@ class State(BaseModel):
     candidates: list[Candidate]
     sources: list[DataSource]
     pilotAnalytics: PilotAnalytics
+    pipeline: PipelineStats
 
 
 class ExportResult(BaseModel):

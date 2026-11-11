@@ -26,10 +26,12 @@ export default function MapPage() {
   const value = params.get("priority");
   const priority: Priority | "all" =
     value === "high" || value === "medium" || value === "low" ? value : "all";
-  const projects = useMemo(
-    () => projectsOnMap(candidates, priority),
-    [candidates, priority],
+  const fresh = projectsOnMap(candidates, priority);
+  // Polling returns a new array every 15 s; rebuild markers only when points change.
+  const signature = JSON.stringify(
+    fresh.map(({ candidate, location }) => [candidate.id, candidate.score, candidate.status, location]),
   );
+  const projects = useMemo(() => fresh, [signature]);
   const located = useMemo(() => projectsOnMap(candidates), [candidates]);
   const missing = candidates.filter((candidate) => !projectLocation(candidate));
   const [reset, setReset] = useState(0);

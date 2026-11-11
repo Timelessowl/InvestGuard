@@ -1,14 +1,43 @@
 name: invest-signal
 
+x-backend-env: &backend-env
+  PGHOST: db
+  PGDATABASE: ${POSTGRES_DB:-investsignal}
+  PGUSER: ${POSTGRES_USER:-investsignal}
+  PGPASSWORD: ${POSTGRES_PASSWORD:-investsignal_demo}
+  LLM_BASE_URL: ${LLM_BASE_URL:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_TRIAGE_MODEL: ${LLM_TRIAGE_MODEL:-GigaChat-3-Pro}
+  LLM_SMART_MODEL: ${LLM_SMART_MODEL:-GigaChat-3-Pro}
+  LLM_EMBED_MODEL: ${LLM_EMBED_MODEL:-EmbeddingsGigaR}
+  LLM_BUDGET_USD: ${LLM_BUDGET_USD:-45}
+  LLM_DAILY_BUDGET_USD: ${LLM_DAILY_BUDGET_USD:-3}
+  LLM_PRICES_JSON: ${LLM_PRICES_JSON:-{}}
+  EXTRA_CA_FILE: ${EXTRA_CA_FILE:-}
+  PIPELINE_INTERVAL_SECONDS: ${PIPELINE_INTERVAL_SECONDS:-60}
+  PIPELINE_BATCH: ${PIPELINE_BATCH:-20}
+  # The scheduler runs in the worker service, not a second time inside the API.
+  PIPELINE_WORKER: "0"
+
+x-backend-volumes: &backend-volumes
+  - ./certs:/run/investsignal/certs:ro
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   frontend:
     build: ./frontend
     ports:
-      - "${APP_PORT:-18473}:8080"
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-18473}:8080"
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    logging: *logging
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
       interval: 10s
@@ -18,15 +47,42 @@ services:
 
   backend:
     build: ./backend
-    environment:
-      PGHOST: db
-      PGDATABASE: ${POSTGRES_DB:-investsignal}
-      PGUSER: ${POSTGRES_USER:-investsignal}
-      PGPASSWORD: ${POSTGRES_PASSWORD:-investsignal_demo}
+    image: invest-signal-backend:local
+    init: true
+    environment: *backend-env
+    volumes: *backend-volumes
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
+    logging: *logging
+
+  worker:
+    image: invest-signal-backend:local
+    init: true
+    command: ["python", "-m", "app.worker"]
+    environment: *backend-env
+    volumes: *backend-volumes
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          from sqlalchemy import text; from app.database import make_engine;
+          engine = make_engine(); connection = engine.connect();
+          connection.execute(text('SELECT 1')); connection.close(); engine.dispose()
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
 
   db:
     image: postgres:17-alpine
@@ -38,6 +94,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     command: ["postgres", "-c", "max_connections=30", "-c", "shared_buffers=64MB"]
     restart: unless-stopped
+    logging: *logging
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
