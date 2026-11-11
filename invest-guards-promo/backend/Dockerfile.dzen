@@ -1,0 +1,12 @@
+# Dzen collector: same app code on the official Playwright image with a bundled Chromium.
+FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY requirements.txt requirements-dzen.txt ./
+RUN pip install --no-cache-dir -r requirements-dzen.txt
+COPY app ./app
+COPY migrations ./migrations
+COPY certs ./certs
+COPY seed ./seed
+USER pwuser
+CMD ["python", "-m", "app.worker"]

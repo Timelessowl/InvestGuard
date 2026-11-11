@@ -20,12 +20,13 @@ from sqlalchemy.orm import Session
 from . import service
 from .agent import Agent
 from .collectors import collect_source
+from .focus import FocusClient, FocusError, FocusInputError, FocusLimitExceeded
 from .database import CandidateRecord, ExportRecord, MetadataRecord, initialize, make_engine, session_factory
 from .llm import BudgetExceeded, LlmClient, LlmError
 from .net import http_client
 from .pipeline import process_pending, stage_counts
-from .schemas import (Candidate, CandidatePatch, ChatReply, ChatRequest, DataSource, DocumentOut, ExportResult, LlmUsage,
-                      NewSignal, PilotAnalytics, State)
+from .schemas import (Candidate, CandidatePatch, ChatReply, ChatRequest, DataSource, DocumentOut, ExportResult, FocusUsage, LlmUsage,
+                      NewSignal, PilotAnalytics, RiskCheckRequest, State)
 from .worker import start_background
 
 log = logging.getLogger(__name__)
@@ -35,9 +36,12 @@ def csv_text(candidates):
     output = io.StringIO(newline='')
     output.write('﻿')
     writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_ALL, lineterminator='\r\n')
-    writer.writerow(['ID', 'Компания', 'ИНН', 'Отрасль', 'Муниципалитет', 'Сигнал', 'Стадия', 'Инвестиции', 'Приоритет', 'Ответственный', 'Следующее действие'])
+    writer.writerow(['ID', 'Компания', 'ИНН', 'Отрасль', 'Муниципалитет', 'Сигнал', 'Стадия', 'Инвестиции', 'Приоритет', 'Ответственный',
+                     'Следующее действие', 'Риск (Контур.Фокус)'])
+    verdicts = {'red': 'Красный', 'yellow': 'Жёлтый', 'green': 'Зелёный'}
     for c in candidates:
-        row = [c.id, c.company, '', c.sector, c.city, c.signal, c.stage, c.amount, c.score, c.owner, c.nextAction]
+        row = [c.id, c.company, c.inn or '', c.sector, c.city, c.signal, c.stage, c.amount, c.score, c.owner, c.nextAction,
+               verdicts[c.risk.verdict] if c.risk else 'Не проверен']
         writer.writerow(["'" + str(v) if re.match(r'^[\s\x00-\x1f]*[=+@-]', str(v)) else v for v in row])
     return output.getvalue()
 
@@ -46,7 +50,8 @@ class ProcessRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=30)
 
 
-def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_settings=None, worker=None):
+def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_settings=None, worker=None,
+               focus_transport=None, focus_settings=None):
     @asynccontextmanager
     async def lifespan(app):
         engine = make_engine(database_url)
@@ -56,8 +61,9 @@ def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_
             app.state.sessions = session_factory(engine)
             app.state.llm = LlmClient(engine, llm_settings, llm_transport)
             app.state.http = http_client(fetch_transport)
+            app.state.focus = FocusClient(engine, focus_settings, focus_transport)
             if (worker if worker is not None else os.environ.get('PIPELINE_WORKER') == '1'):
-                stop = start_background(app.state.sessions, app.state.llm, app.state.http)
+                stop = start_background(app.state.sessions, app.state.llm, app.state.http, app.state.focus)
             yield
         finally:
             if stop:
@@ -91,12 +97,17 @@ def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_
     async def conflict(request, error):
         return JSONResponse(status_code=409, content={'detail': str(error)})
 
+    @app.exception_handler(FocusError)
+    async def focus_error(request, error):
+        status = 400 if isinstance(error, FocusInputError) else 429 if isinstance(error, FocusLimitExceeded) else 502
+        return JSONResponse(status_code=status, content={'detail': str(error)})
+
     @app.exception_handler(LlmError)
     async def llm_error(request, error):
         return JSONResponse(status_code=429 if isinstance(error, BudgetExceeded) else 502, content={'detail': str(error)})
 
     def pipeline_stats(request, db):
-        return {'stages': stage_counts(db), 'usage': request.app.state.llm.usage()}
+        return {'stages': stage_counts(db), 'usage': request.app.state.llm.usage(), 'focus': request.app.state.focus.usage()}
 
     @app.get('/api/health')
     def health(db: Session = Depends(session)):
@@ -124,6 +135,15 @@ def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_
     def update(candidate_id: str, patch: CandidatePatch, db: Session = Depends(session)):
         return service.patch_candidate(db, candidate_id, patch)
 
+    @app.post('/api/candidates/{candidate_id}/risk-check', response_model=Candidate,
+              description='Проверка инициатора по ИНН в Контур.Фокусе: флаги рисков и вердикт. Тратит лимит на новые ИНН.')
+    def risk_check(candidate_id: str, input: RiskCheckRequest, request: Request, db: Session = Depends(session)):
+        return service.check_candidate(db, request.app.state.focus, candidate_id, input.inn, input.force)
+
+    @app.get('/api/focus/usage', response_model=FocusUsage)
+    def focus_usage(request: Request):
+        return request.app.state.focus.usage()
+
     @app.get('/api/sources', response_model=list[DataSource])
     def sources(db: Session = Depends(session)):
         return service.list_sources(db)
@@ -146,7 +166,7 @@ def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_
     @app.post('/api/pipeline/process', description='Разбирает новые документы ИИ прямо сейчас (тратит бюджет).')
     def process(input: ProcessRequest, request: Request):
         request.app.state.llm.ensure_available()
-        return process_pending(request.app.state.sessions, request.app.state.llm, input.limit)
+        return process_pending(request.app.state.sessions, request.app.state.llm, input.limit, request.app.state.focus)
 
     @app.get('/api/llm/usage', response_model=LlmUsage)
     def usage(request: Request):
@@ -154,7 +174,7 @@ def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_
 
     @app.post('/api/chat', response_model=ChatReply)
     def chat(input: ChatRequest, request: Request):
-        agent = Agent(request.app.state.sessions, request.app.state.llm, request.app.state.http)
+        agent = Agent(request.app.state.sessions, request.app.state.llm, request.app.state.http, request.app.state.focus)
         reply, trace, changed = agent.run(input.messages)
         return ChatReply(reply=reply, trace=trace, changed=changed)
 

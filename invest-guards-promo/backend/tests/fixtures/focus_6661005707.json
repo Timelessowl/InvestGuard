@@ -1,0 +1,792 @@
+{
+ "req": {
+  "inn": "6661005707",
+  "ogrn": "1026605225591",
+  "UL": {
+   "legalName": {
+    "short": "АО \"ЕЗ ОЦМ\"",
+    "full": "АКЦИОНЕРНОЕ ОБЩЕСТВО \"ЕКАТЕРИНБУРГСКИЙ ЗАВОД ПО ОБРАБОТКЕ ЦВЕТНЫХ МЕТАЛЛОВ\"",
+    "readable": "АО \"Екатеринбургский Завод по Обработке Цветных Металлов\"",
+    "date": "2017-07-07"
+   },
+   "status": {
+    "statusString": "Действующее",
+    "code": "001"
+   },
+   "registrationDate": "1993-03-19"
+  }
+ },
+ "legalAnalytics": {
+  "inn": "6661005707",
+  "ogrn": "1026605225591",
+  "legalAnalyticsData": {
+   "additionalCheckNeeded": {
+    "data": false,
+    "isActual": true
+   },
+   "potentialSitesCount": {
+    "isActual": true,
+    "data": 2
+   },
+   "trademarksCount": {
+    "isActual": true,
+    "data": 2
+   },
+   "headHunterOpenVacancies": {
+    "isActual": true,
+    "data": 18
+   },
+   "superJobOpenVacancies": {
+    "isActual": true,
+    "data": 0
+   },
+   "workInRussiaOpenVacancies": {
+    "isActual": true,
+    "data": 0
+   },
+   "register3Month": {
+    "data": false,
+    "isActual": true
+   },
+   "register6Month": {
+    "data": false,
+    "isActual": true
+   },
+   "register12Month": {
+    "data": false,
+    "isActual": true
+   },
+   "unreliableAddress": {
+    "data": false,
+    "isActual": true
+   },
+   "unreliableManager": {
+    "data": false,
+    "isActual": true
+   },
+   "unreliableFounder": {
+    "data": false,
+    "isActual": true
+   },
+   "unreliableGroup": {
+    "data": false,
+    "isActual": true
+   },
+   "lastBankAccountFnsBlockDate": {
+    "isActual": true,
+    "data": "2026-11-10"
+   },
+   "bankAccountFnsBlock": {
+    "data": false,
+    "isActual": true
+   },
+   "highRiskOfBlockingOperations": {
+    "data": false,
+    "isActual": true
+   },
+   "staffNumberDate": {
+    "isActual": true
+   },
+   "staffNumber": {
+    "isActual": true
+   },
+   "historyStaffNumbers": {
+    "isActual": true
+   },
+   "enterpriseChangeDate": {
+    "isActual": true
+   },
+   "enterpriseIncludeDate": {
+    "isActual": true
+   },
+   "enterpriseDeleteDate": {
+    "isActual": true
+   },
+   "enterpriseMicro": {
+    "data": false,
+    "isActual": true
+   },
+   "enterpriseSmall": {
+    "data": false,
+    "isActual": true
+   },
+   "enterpriseMean": {
+    "data": false,
+    "isActual": true
+   },
+   "enterpriseSupport12Month": {
+    "data": false,
+    "isActual": true
+   },
+   "enterpriseSupport": {
+    "data": false,
+    "isActual": true
+   },
+   "fnsSimpleTax": {
+    "data": false,
+    "isActual": true
+   },
+   "fnsAutomateTax": {
+    "data": false,
+    "isActual": true
+   },
+   "fnsAgricultureTax": {
+    "data": false,
+    "isActual": true
+   },
+   "fnsSection": {
+    "data": false,
+    "isActual": true
+   },
+   "fnsSpecialTaxDate": {
+    "isActual": true
+   },
+   "fnsDisqualified": {
+    "data": false,
+    "isActual": true
+   },
+   "fnsTaxReportMissing": {
+    "data": false,
+    "isActual": true
+   },
+   "fnsHasTaxDebt": {
+    "data": false,
+    "isActual": true
+   },
+   "documentsForLiquidation": {
+    "data": false,
+    "isActual": true
+   },
+   "documentsForManagementChange": {
+    "data": false,
+    "isActual": true
+   },
+   "documentsForOwnerChange": {
+    "data": false,
+    "isActual": true
+   },
+   "documentsForAddressChange": {
+    "data": false,
+    "isActual": true
+   },
+   "documentsForCapitalChange": {
+    "data": false,
+    "isActual": true
+   },
+   "documentsForStop": {
+    "data": false,
+    "isActual": true
+   },
+   "documentsP13014": {
+    "data": false,
+    "isActual": true
+   },
+   "checkWithoutViolation12Month": {
+    "isActual": true,
+    "data": 0
+   },
+   "checkWithViolation12Month": {
+    "isActual": true,
+    "data": 0
+   },
+   "checkUnknown12Month": {
+    "isActual": true,
+    "data": 0
+   },
+   "depositPledger": {
+    "isActual": true,
+    "data": 0
+   },
+   "depositPledgee": {
+    "isActual": true,
+    "data": 0
+   }
+  }
+ },
+ "bankruptcyAnalytics": {
+  "inn": "6661005707",
+  "ogrn": "1026605225591",
+  "bankruptcyAnalyticsData": {
+   "defendantAllCount": {
+    "isActual": true,
+    "data": 1
+   },
+   "defendantAllSum": {
+    "isActual": true,
+    "data": 0.0
+   },
+   "defendantInProgressCount6Month": {
+    "isActual": true,
+    "data": 0
+   },
+   "defendantInProgressSum6Month": {
+    "isActual": true,
+    "data": 0
+   },
+   "defendantInProgressCount": {
+    "isActual": true,
+    "data": 0
+   },
+   "defendantInProgressSum": {
+    "isActual": true,
+    "data": 0
+   },
+   "defendantUnknownCount6Month": {
+    "isActual": true,
+    "data": 0
+   },
+   "defendantUnknownSum6Month": {
+    "isActual": true,
+    "data": 0
+   },
+   "defendantUnknownCount": {
+    "isActual": true,
+    "data": 0
+   },
+   "defendantUnknownSum": {
+    "isActual": true,
+    "data": 0
+   },
+   "arbitrationCase3Month": {
+    "data": false,
+    "isActual": true
+   },
+   "message12Month": {
+    "data": false,
+    "isActual": true
+   },
+   "currentStage": {
+    "isActual": true
+   },
+   "currentStageDate": {
+    "isActual": true
+   },
+   "intentionMonth": {
+    "data": false,
+    "isActual": true
+   },
+   "signEnd": {
+    "data": false,
+    "isActual": true
+   },
+   "messageManager12Month": {
+    "data": false,
+    "isActual": true
+   },
+   "messageFounder12Month": {
+    "data": false,
+    "isActual": true
+   }
+  }
+ },
+ "courtAnalytics": {
+  "inn": "6661005707",
+  "ogrn": "1026605225591",
+  "courtAnalyticsData": {
+   "defendantAllCount12Month": {
+    "isActual": true
+   },
+   "defendantAllSum12Month": {
+    "isActual": true
+   },
+   "defendantAllCount3Year": {
+    "isActual": true
+   },
+   "defendantAllSum3Year": {
+    "isActual": true
+   },
+   "petitionerAllCount12Month": {
+    "data": 5,
+    "isActual": true
+   },
+   "petitionerAllSum12Month": {
+    "data": 345595816.84,
+    "isActual": true
+   },
+   "petitionerAllCount3Year": {
+    "data": 7,
+    "isActual": true
+   },
+   "petitionerAllSum3Year": {
+    "data": 380499252.14,
+    "isActual": true
+   },
+   "defendantLostCount12Month": {
+    "isActual": true
+   },
+   "defendantLostSum12Month": {
+    "isActual": true
+   },
+   "defendantLostCount3Year": {
+    "isActual": true
+   },
+   "defendantLostSum3Year": {
+    "isActual": true
+   },
+   "petitionerLostCount12Month": {
+    "isActual": true
+   },
+   "petitionerLostSum12Month": {
+    "isActual": true
+   },
+   "petitionerLostCount3Year": {
+    "isActual": true
+   },
+   "petitionerLostSum3Year": {
+    "isActual": true
+   },
+   "defendantPartialLostCount12Month": {
+    "isActual": true
+   },
+   "defendantPartialLostSum12Month": {
+    "isActual": true
+   },
+   "defendantPartialLostCount3Year": {
+    "isActual": true
+   },
+   "defendantPartialLostSum3Year": {
+    "isActual": true
+   },
+   "petitionerPartialLostCount12Month": {
+    "data": 1,
+    "isActual": true
+   },
+   "petitionerPartialLostSum12Month": {
+    "data": 13919820.64,
+    "isActual": true
+   },
+   "petitionerPartialLostCount3Year": {
+    "data": 2,
+    "isActual": true
+   },
+   "petitionerPartialLostSum3Year": {
+    "data": 14705980.01,
+    "isActual": true
+   },
+   "defendantWinCount12Month": {
+    "isActual": true
+   },
+   "defendantWinSum12Month": {
+    "isActual": true
+   },
+   "defendantWinCount3Year": {
+    "isActual": true
+   },
+   "defendantWinSum3Year": {
+    "isActual": true
+   },
+   "petitionerWinCount12Month": {
+    "data": 2,
+    "isActual": true
+   },
+   "petitionerWinSum12Month": {
+    "data": 503152.68,
+    "isActual": true
+   },
+   "petitionerWinCount3Year": {
+    "data": 2,
+    "isActual": true
+   },
+   "petitionerWinSum3Year": {
+    "data": 503152.68,
+    "isActual": true
+   },
+   "defendantInProgressCount12Month": {
+    "isActual": true
+   },
+   "defendantInProgressSum12Month": {
+    "isActual": true
+   },
+   "defendantInProgressCount3Year": {
+    "isActual": true
+   },
+   "defendantInProgressSum3Year": {
+    "isActual": true
+   },
+   "petitionerInProgressCount12Month": {
+    "data": 2,
+    "isActual": true
+   },
+   "petitionerInProgressSum12Month": {
+    "data": 331172843.52,
+    "isActual": true
+   },
+   "petitionerInProgressCount3Year": {
+    "data": 2,
+    "isActual": true
+   },
+   "petitionerInProgressSum3Year": {
+    "data": 331172843.52,
+    "isActual": true
+   },
+   "defendantUnknownCount12Month": {
+    "isActual": true
+   },
+   "defendantUnknownSum12Month": {
+    "isActual": true
+   },
+   "defendantUnknownCount3Year": {
+    "isActual": true
+   },
+   "defendantUnknownSum3Year": {
+    "isActual": true
+   },
+   "petitionerUnknownCount12Month": {
+    "isActual": true
+   },
+   "petitionerUnknownSum12Month": {
+    "isActual": true
+   },
+   "petitionerUnknownCount3Year": {
+    "isActual": true
+   },
+   "petitionerUnknownSum3Year": {
+    "isActual": true
+   },
+   "defendantStoppedCount12Month": {
+    "isActual": true
+   },
+   "defendantStoppedSum12Month": {
+    "isActual": true
+   },
+   "defendantStoppedCount3Year": {
+    "isActual": true
+   },
+   "defendantStoppedSum3Year": {
+    "isActual": true
+   },
+   "petitionerStoppedCount12Month": {
+    "isActual": true
+   },
+   "petitionerStoppedSum12Month": {
+    "isActual": true
+   },
+   "petitionerStoppedCount3Year": {
+    "data": 1,
+    "isActual": true
+   },
+   "petitionerStoppedSum3Year": {
+    "data": 34117275.93,
+    "isActual": true
+   },
+   "defendantBankruptcyAllCount": {
+    "data": 1,
+    "isActual": true
+   },
+   "defendantBankruptcyAllSum": {
+    "isActual": true
+   },
+   "defendantBankruptcyInProgressCount": {
+    "isActual": true
+   },
+   "defendantBankruptcyInProgressSum": {
+    "isActual": true
+   },
+   "defendantBankruptcyUnknownCount": {
+    "isActual": true
+   },
+   "defendantBankruptcyUnknownSum": {
+    "isActual": true
+   },
+   "defendantCreditCount": {
+    "data": 5,
+    "isActual": true
+   },
+   "defendantCreditSum": {
+    "data": 300963826.050253,
+    "isActual": true
+   },
+   "defendantTaxCount": {
+    "data": 1,
+    "isActual": true
+   },
+   "defendantTaxSum": {
+    "data": 100.0,
+    "isActual": true
+   },
+   "defendantServiceCount": {
+    "data": 4,
+    "isActual": true
+   },
+   "defendantServiceSum": {
+    "data": 35576375.916,
+    "isActual": true
+   },
+   "defendantSupplyCount": {
+    "data": 1,
+    "isActual": true
+   },
+   "defendantSupplySum": {
+    "data": 132078.14,
+    "isActual": true
+   },
+   "defendantGeneralCourt12Month": {
+    "isActual": true
+   },
+   "defendantGeneralCourt3Year": {
+    "isActual": true
+   }
+  }
+ },
+ "financeAnalytics": {
+  "inn": "6661005707",
+  "ogrn": "1026605225591",
+  "financeAnalyticsData": {
+   "lastBuhYear": {
+    "isActual": true,
+    "data": 2021
+   },
+   "lastBuh": {
+    "data": false,
+    "isActual": true
+   },
+   "incomeStart": {
+    "isActual": true,
+    "data": 5556993000
+   },
+   "incomeEnd": {
+    "isActual": true,
+    "data": 10995758000
+   },
+   "balanceStart": {
+    "isActual": true,
+    "data": 7025808000
+   },
+   "balanceEnd": {
+    "isActual": true,
+    "data": 7740566000
+   },
+   "profitStart": {
+    "isActual": true,
+    "data": 525302000
+   },
+   "profitEnd": {
+    "isActual": true,
+    "data": 1491488000
+   },
+   "netAssetStart": {
+    "isActual": true,
+    "data": 1069129000
+   },
+   "netAssetEnd": {
+    "isActual": true,
+    "data": 2951426000
+   },
+   "taxSum": {
+    "isActual": true
+   },
+   "taxSumDate": {
+    "isActual": true
+   },
+   "incomeSum": {
+    "isActual": true
+   },
+   "incomeSumDate": {
+    "isActual": true
+   },
+   "expenseSum": {
+    "isActual": true
+   },
+   "expenseSumDate": {
+    "isActual": true
+   },
+   "debtSum": {
+    "isActual": true
+   },
+   "debtSumDate": {
+    "isActual": true
+   },
+   "fineSum": {
+    "isActual": true
+   },
+   "fineSumDate": {
+    "isActual": true
+   },
+   "exRatingYear": {
+    "isActual": true,
+    "data": 2021
+   },
+   "exRating": {
+    "isActual": true,
+    "data": "BB"
+   }
+  }
+ },
+ "fsspAnalytics": {
+  "inn": "6661005707",
+  "ogrn": "1026605225591",
+  "fsspAnalyticsData": {
+   "count12Month": {
+    "isActual": true
+   },
+   "sum12Month": {
+    "isActual": true
+   },
+   "count": {
+    "isActual": true
+   },
+   "sum": {
+    "isActual": true
+   },
+   "insuranceCount": {
+    "isActual": true
+   },
+   "insuranceSum": {
+    "isActual": true
+   },
+   "taxCount": {
+    "isActual": true
+   },
+   "taxSum": {
+    "isActual": true
+   },
+   "communalCount": {
+    "isActual": true
+   },
+   "communalSum": {
+    "isActual": true
+   },
+   "fineCount": {
+    "isActual": true
+   },
+   "fineSum": {
+    "isActual": true
+   },
+   "salaryCount": {
+    "isActual": true
+   },
+   "salarySum": {
+    "isActual": true
+   },
+   "creditCount": {
+    "isActual": true
+   },
+   "creditSum": {
+    "isActual": true
+   },
+   "propertyCount": {
+    "isActual": true
+   },
+   "propertySum": {
+    "isActual": true
+   },
+   "arrestCount": {
+    "isActual": true
+   },
+   "arrestSum": {
+    "isActual": true
+   },
+   "fineForPersonCount": {
+    "isActual": true
+   },
+   "fineForPersonSum": {
+    "isActual": true
+   }
+  }
+ },
+ "linkAnalytics": {
+  "inn": "6661005707",
+  "ogrn": "1026605225591",
+  "linkAnalyticsData": {
+   "bankruptcyLiquidatedCount": {
+    "data": 28,
+    "isActual": true
+   },
+   "officeAddressTodayCount": {
+    "isActual": true
+   },
+   "addressTodayCount": {
+    "data": 23,
+    "isActual": true
+   },
+   "officeAddressCount": {
+    "isActual": true
+   },
+   "addressCount": {
+    "data": 52,
+    "isActual": true
+   },
+   "partOfCapitalCount": {
+    "data": 20,
+    "isActual": true
+   },
+   "noLiquidatedManagerInnCount": {
+    "data": 2,
+    "isActual": true
+   },
+   "noLiquidatedManagerFioCount": {
+    "data": 3,
+    "isActual": true
+   },
+   "managerInnCount": {
+    "data": 5,
+    "isActual": true
+   },
+   "managerFioCount": {
+    "data": 10,
+    "isActual": true
+   },
+   "noLiquidatedFounderInnCount": {
+    "isActual": true
+   },
+   "noLiquidatedFounderFioCount": {
+    "isActual": true
+   },
+   "founderInnCount": {
+    "isActual": true
+   },
+   "founderFioCount": {
+    "isActual": true
+   }
+  }
+ },
+ "fnsBlockedBankAccounts": {
+  "inn": "6661005707",
+  "ogrn": "1026605225591",
+  "blockedAccountsInfo": {
+   "updateDate": "2026-11-10",
+   "totalCount": 0
+  }
+ },
+ "beneficialOwners": {
+  "inn": "6661005707",
+  "statedCapital": {
+   "sum": 101154348,
+   "date": "2016-10-27"
+  },
+  "beneficialOwners": {
+   "beneficialOwnersFL": [],
+   "beneficialOwnersUL": [
+    {
+     "ogrn": "1196658041788",
+     "inn": "6658526153",
+     "fullName": "АО \"Урал-Драгмет\"",
+     "share": 92.00000166893,
+     "isAccurate": true
+    }
+   ],
+   "beneficialOwnersForeign": [],
+   "beneficialOwnersOther": []
+  }
+ },
+ "scoring": {
+  "inn": "6661005707",
+  "scoringData": [
+   {
+    "modelName": "Критерии налоговой проверки",
+    "rating": 74,
+    "ratingLevel": "High"
+   },
+   {
+    "modelName": "Критерии благонадёжности контрагентов",
+    "rating": 79,
+    "ratingLevel": "High"
+   },
+   {
+    "modelName": "Финансовое состояние",
+    "rating": 78,
+    "ratingLevel": "High"
+   }
+  ]
+ }
+}

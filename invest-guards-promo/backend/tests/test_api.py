@@ -15,7 +15,8 @@ def test_seed_and_restart_preserve_changes(client):
     assert api.get('/api/health').json()['database'] == 'ok'
     state = api.get('/api/state').json()
     assert len(state['candidates']) == 6
-    assert [s['id'] for s in state['sources']] == ['66ru', 'e1', 'justmedia', 'kommersant-ural', 'oblgazeta', 'ura']
+    assert len(state['sources']) == 19 and {'oblgazeta', 'rbc', 'stroygaz', 'dzen'} <= {s['id'] for s in state['sources']}
+    assert next(s for s in state['sources'] if s['id'] == 'dzen')['kind'] == 'dzen'
     assert state['pipeline']['usage']['configured'] is False
     assert state['pilotAnalytics']['confirmationRate'] == '41%'
     assert state['candidates'][0]['location']['precision'] == 'municipality'

@@ -16,6 +16,10 @@ x-backend-env: &backend-env
   EXTRA_CA_FILE: ${EXTRA_CA_FILE:-}
   PIPELINE_INTERVAL_SECONDS: ${PIPELINE_INTERVAL_SECONDS:-60}
   PIPELINE_BATCH: ${PIPELINE_BATCH:-20}
+  FOCUS_API_KEY: ${FOCUS_API_KEY:-}
+  FOCUS_INN_LIMIT: ${FOCUS_INN_LIMIT:-950}
+  FOCUS_AUTO_CHECK: ${FOCUS_AUTO_CHECK:-1}
+  SOURCE_KINDS: rss
   # The scheduler runs in the worker service, not a second time inside the API.
   PIPELINE_WORKER: "0"
 
@@ -83,6 +87,27 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+
+  # Dzen search pages are rendered in a headless browser; opt in with `docker compose --profile dzen up -d`.
+  dzen:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dzen
+    image: invest-signal-dzen:local
+    init: true
+    profiles: ["dzen"]
+    environment:
+      <<: *backend-env
+      SOURCE_KINDS: dzen
+      PIPELINE_PROCESS: "0"
+    volumes: *backend-volumes
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
 
   db:
     image: postgres:17-alpine
