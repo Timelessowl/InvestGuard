@@ -51,3 +51,11 @@ def test_bootstrap_refuses_unknown_password():
         assert 'UMAMI_ADMIN_PASSWORD' in str(error)
     else:
         raise AssertionError('bootstrap should fail')
+
+
+def test_tracking_config(client, monkeypatch):
+    api, _ = client
+    monkeypatch.delenv('UMAMI_WEBSITE_ID', raising=False)
+    assert api.get('/api/tracking').json() == {'websiteId': None}
+    monkeypatch.setenv('UMAMI_WEBSITE_ID', WEBSITE)
+    assert api.get('/api/tracking').json() == {'websiteId': WEBSITE}
