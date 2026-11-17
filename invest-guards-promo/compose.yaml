@@ -41,6 +41,10 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      # Only with the analytics profile; lets `up --wait` accept the one-shot init.
+      umami-init:
+        condition: service_completed_successfully
+        required: false
     restart: unless-stopped
     logging: *logging
     healthcheck:
