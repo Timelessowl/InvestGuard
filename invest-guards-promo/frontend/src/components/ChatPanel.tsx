@@ -4,6 +4,7 @@ import { Bot, SendHorizontal, Trash2, Wrench } from "lucide-react";
 import { useApp } from "../app/AppProvider";
 import type { ChatMessage, ChatReply } from "../domain/models";
 import { CloseButton, Spinner } from "./ui";
+import { track } from "../services/analytics";
 import "./chat.css";
 
 type Entry = ChatMessage & { trace?: ChatReply["trace"]; failed?: boolean };
@@ -107,8 +108,14 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
         next.filter((entry) => !entry.failed).map(({ role, content }) => ({ role, content })),
       );
       setHistory([...next, { role: "assistant", content: reply.reply, trace: reply.trace }]);
+      track("assistant_message", {
+        tools: reply.trace.map((call) => call.name).join(",").slice(0, 200) || "none",
+        toolCalls: reply.trace.length,
+        changed: reply.changed,
+      });
       if (reply.changed) void refresh();
     } catch (error) {
+      track("assistant_error");
       setHistory([
         ...next,
         {
