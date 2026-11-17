@@ -7,6 +7,7 @@ import {
 } from "../domain/models";
 import { useApp } from "../app/AppProvider";
 import { CloseButton, Modal, Spinner } from "./ui";
+import { track } from "../services/analytics";
 
 export function AddSignalDialog({
   onClose,
@@ -62,6 +63,7 @@ export function AddSignalDialog({
     try {
       const candidate = await mutate(() => api.create(result.data));
       notify(`Карточка ${candidate.id} создана`);
+      track("signal_create", { card: candidate.id, sector: candidate.sector });
       onCreated(candidate.id);
     } catch (error) {
       setSaveError(

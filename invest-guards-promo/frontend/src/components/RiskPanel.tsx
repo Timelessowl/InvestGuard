@@ -3,6 +3,7 @@ import { RotateCw, ShieldAlert, ShieldCheck, ShieldQuestion } from "lucide-react
 import { useApp } from "../app/AppProvider";
 import { riskLabels, type Candidate } from "../domain/models";
 import { Spinner } from "./ui";
+import { track } from "../services/analytics";
 
 const icons = { red: ShieldAlert, yellow: ShieldQuestion, green: ShieldCheck };
 
@@ -28,9 +29,11 @@ export function RiskPanel({ candidate }: { candidate: Candidate }) {
     setError(null);
     try {
       const result = await mutate(() => api.riskCheck(candidate.id, inn.trim() || undefined, force));
+      track("risk_check", { card: candidate.id, verdict: result.risk?.verdict ?? "none", forced: force, inn: candidate.inn ? "card" : "manual" });
       notify(`${result.risk?.company || candidate.company}: ${riskLabels[result.risk!.verdict].toLowerCase()}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Проверка не выполнена.");
+      track("risk_check_failed", { card: candidate.id });
     } finally {
       setPending(false);
     }
