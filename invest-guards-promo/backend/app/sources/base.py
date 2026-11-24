@@ -81,6 +81,7 @@ class Batch:
     events: list[EventItem] = field(default_factory=list)
     cursor: dict | None = None  # saved after the batch is written
     snapshot_complete: bool = False  # last batch of a full export
+    rejected: int = 0  # records the adapter dropped (other region, no identifiers)
 
 
 def keep_fields(data, fields):
