@@ -3,7 +3,7 @@ import json
 import math
 
 import httpx
-from fastapi.testclient import TestClient
+from conftest import api_client
 
 from app.collectors import CollectError, parse_feed
 from app.llm import LlmSettings
@@ -107,7 +107,7 @@ def test_parse_feed_handles_rss_atom_and_rejects_entities():
 
 def test_collect_process_dedupe_and_card(database_url):
     app, llm = make_api(database_url)
-    with TestClient(app) as api:
+    with api_client(app) as api:
         first = api.post('/api/sources/oblgazeta/collect').json()
         assert first['added'] == 3 and first['source']['documents'] == 3
         assert api.post('/api/sources/oblgazeta/collect').json()['added'] == 0
@@ -132,7 +132,7 @@ def test_collect_process_dedupe_and_card(database_url):
 
 def test_budget_stops_processing(database_url):
     app, llm = make_api(database_url, budget=0.0005)
-    with TestClient(app) as api:
+    with api_client(app) as api:
         api.post('/api/sources/oblgazeta/collect')
         result = api.post('/api/pipeline/process', json={'limit': 10}).json()
         assert 'бюджет' in result['stopped']
@@ -142,7 +142,7 @@ def test_budget_stops_processing(database_url):
 
 def test_chat_uses_tools_and_reports_changes(database_url):
     app, llm = make_api(database_url)
-    with TestClient(app) as api:
+    with api_client(app) as api:
         reply = api.post('/api/chat', json={'messages': [{'role': 'user', 'content': 'Что есть по Ревде?'}]}).json()
         assert reply['reply'] == 'Найдена карточка INV-0254.' and not reply['changed']
         assert reply['trace'][0]['name'] == 'search_candidates' and reply['trace'][0]['summary'] == 'Найдено карточек: 1'

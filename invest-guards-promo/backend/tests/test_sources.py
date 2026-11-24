@@ -1,5 +1,5 @@
 import httpx
-from fastapi.testclient import TestClient
+from conftest import api_client
 
 from app import clickbait, dzen
 from app.focus import FocusSettings
@@ -35,7 +35,7 @@ def test_dzen_collection_and_strict_clickbait_filter(database_url, monkeypatch):
     llm = FakeLlm()
     app = create_app(database_url, worker=False, llm_transport=httpx.MockTransport(llm), fetch_transport=httpx.MockTransport(fetch),
                      llm_settings=LlmSettings(base_url='https://llm.test/v1', api_key='k'), focus_settings=FocusSettings())
-    with TestClient(app) as api:
+    with api_client(app) as api:
         result = api.post('/api/sources/dzen/collect').json()
         assert result['added'] == 2 and result['source']['kind'] == 'dzen' and result['source']['status'] == 'active'
         assert api.post('/api/pipeline/process', json={'limit': 10}).json()['signal'] == 1
@@ -53,7 +53,7 @@ def test_inn_in_news_triggers_focus_check(database_url):
     app = create_app(database_url, worker=False, llm_transport=httpx.MockTransport(FakeLlm()), fetch_transport=httpx.MockTransport(feed),
                      llm_settings=LlmSettings(base_url='https://llm.test/v1', api_key='k'),
                      focus_transport=httpx.MockTransport(focus), focus_settings=FocusSettings(api_key='test-key'))
-    with TestClient(app) as api:
+    with api_client(app) as api:
         api.post('/api/sources/oblgazeta/collect')
         api.post('/api/pipeline/process', json={'limit': 5})
         card = next(c for c in api.get('/api/candidates').json() if c['origin'] == 'ai')
@@ -78,7 +78,7 @@ def test_gigachat_refusal_rejects_document_once(database_url):
         return llm(request)
     app = create_app(database_url, worker=False, llm_transport=httpx.MockTransport(refusing), fetch_transport=httpx.MockTransport(fetch),
                      llm_settings=LlmSettings(base_url='https://llm.test/v1', api_key='k'), focus_settings=FocusSettings())
-    with TestClient(app) as api:
+    with api_client(app) as api:
         api.post('/api/sources/oblgazeta/collect')
         result = api.post('/api/pipeline/process', json={'limit': 10}).json()
         assert result['error'] == 0 and result['rejected'] == 2
