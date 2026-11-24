@@ -173,3 +173,80 @@ def test_old_cards_survive_migration(database_url):
         demo = json.loads((ROOT / 'seed/candidates.json').read_text())[2]
         assert cards[demo['id']]['company'] == demo['company'] and cards[demo['id']]['evidence'][0]['excerpt'] == demo['evidence'][0]['excerpt']
         assert api.get('/api/events').json()['total'] == 0
+
+
+def event_evidence(api, card_id):
+    return [e for e in api.get(f'/api/candidates/{card_id}').json()['evidence'] if e.get('kind') == 'event']
+
+
+def test_changed_event_leaves_old_card_with_its_evidence(database_url):
+    api, sessions = setup(database_url)
+    other = make_inn('667100005')
+    try:
+        set_card(sessions, 'INV-0254', inn=INN)
+        push(sessions, event('construction_permit', 'Разрешение', key='e-1'), event('engineering_connection', 'Заявка', key='e-2'),
+             event('investment_equipment', 'Станки', key='e-3'))
+        assert link(sessions)['linked'] == 3
+        ids = {e['title']: e['id'] for e in api.get('/api/events').json()['items']}
+        assert {e['eventId'] for e in event_evidence(api, 'INV-0254')} == set(ids.values())
+
+        # Correction from the source: another INN, a context type, another municipality.
+        push(sessions, event('construction_permit', 'Разрешение', key='e-1', inn=other),
+             event('land_lot_published', 'Заявка', key='e-2'), event('investment_equipment', 'Станки', key='e-3', place='Серов'))
+        link(sessions)
+        found = events_by_title(api)
+        assert found['Разрешение']['processingStatus'] == 'waiting' and found['Разрешение']['candidates'] == []
+        assert found['Заявка']['processingStatus'] == 'context' and found['Заявка']['candidates'] == []
+        assert found['Станки']['processingStatus'] == 'review'
+        assert found['Станки']['candidates'] == [{'id': 'INV-0254', 'confidence': 'manual_review'}]
+        assert event_evidence(api, 'INV-0254') == [], 'evidence goes with the confirmed link'
+        assert [e['title'] for e in api.get('/api/candidates/INV-0254/events').json()] == ['Станки']
+        assert len(api.get('/api/candidates/INV-0254').json()['evidence']) == 2, 'news evidence of the demo card stays'
+    finally:
+        api.__exit__(None, None, None)
+
+
+def test_threshold_takes_group_event_off_another_card(database_url):
+    """Reviewer's case: a linked event gets a new INN and joins a fresh card through another event's threshold."""
+    api, sessions = setup(database_url)
+    other = make_inn('667100006')
+    try:
+        set_card(sessions, 'INV-0254', inn=INN)
+        push(sessions, event('engineering_connection', 'E1', key='e1', inn=other))
+        push(sessions, event('construction_permit', 'G', key='g'))
+        link(sessions)
+        assert events_by_title(api)['E1']['processingStatus'] == 'waiting'
+        assert len(event_evidence(api, 'INV-0254')) == 1
+        # Both change; E1 is ahead of G by collected_at, so E1's threshold links G before G's own run.
+        push(sessions, event('construction_permit', 'G', key='g', inn=other), event('engineering_connection', 'E1 (уточнено)', key='e1', inn=other))
+        assert link(sessions)['linked'] == 1
+        found = events_by_title(api)
+        card = next(c for c in api.get('/api/candidates').json() if c['origin'] == 'events')
+        assert found['G']['candidates'] == [{'id': card['id'], 'confidence': 'confirmed'}]
+        assert found['E1 (уточнено)']['candidates'] == [{'id': card['id'], 'confidence': 'confirmed'}]
+        assert event_evidence(api, 'INV-0254') == [] and api.get('/api/candidates/INV-0254/events').json() == []
+        assert {e['eventId'] for e in card['evidence']} == {found['G']['id'], found['E1 (уточнено)']['id']}
+    finally:
+        api.__exit__(None, None, None)
+
+
+def test_place_outside_reference_is_kept_and_reviewed(database_url):
+    api, sessions = setup(database_url)
+    fresh = make_inn('667100007')
+    try:
+        set_card(sessions, 'INV-0254', inn=INN)
+        push(sessions, event('construction_permit', 'Склад в Тюмени', place='г. Тюмень'),
+             event('construction_permit', 'Цех', inn=fresh, place='Пермь'), event('engineering_connection', 'Сети', inn=fresh, place='Пермь'))
+        link(sessions)
+        found = events_by_title(api)
+        moved = found['Склад в Тюмени']
+        assert moved['municipality'] == 'г. Тюмень', 'an unknown place is not erased'
+        assert moved['processingStatus'] == 'review' and 'не найден в справочнике' in moved['processingReason']
+        assert moved['candidates'] == [{'id': 'INV-0254', 'confidence': 'manual_review'}]
+        assert event_evidence(api, 'INV-0254') == []
+        assert {found['Цех']['processingStatus'], found['Сети']['processingStatus']} == {'waiting', 'review'}
+        assert not [c for c in api.get('/api/candidates').json() if c['origin'] == 'events'], 'no card outside the region'
+        assert [e['title'] for e in api.get('/api/events?municipality=Тюмень').json()['items']] == ['Склад в Тюмени']
+        assert api.get('/api/events?municipality=Ревда').json()['total'] == 0
+    finally:
+        api.__exit__(None, None, None)

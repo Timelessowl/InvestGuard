@@ -135,6 +135,7 @@ class SyncStateRecord(Base):
     last_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_check_ok: Mapped[bool | None] = mapped_column(Boolean)
     last_check_message: Mapped[str | None] = mapped_column(Text)
+    snapshot_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SourceRunRecord(Base):

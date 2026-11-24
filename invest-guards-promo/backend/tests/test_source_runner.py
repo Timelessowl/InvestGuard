@@ -271,3 +271,66 @@ def test_assistant_collects_only_news_without_id(database_url, pauses, monkeypat
         assert agent.collect_sources('fake-src') == {'fake-src': {'added': 0, 'queued': True, 'status': 'queued'}}
         assert api.get('/api/events').json()['total'] == 0
         assert api.get('/api/sources/oblgazeta/runs').json()[0]['trigger'] == 'assistant'
+
+
+def test_news_errors_wait_full_schedule(database_url, monkeypatch):
+    """RSS and Dzen keep the pre-adapter rule: after any error the next run is a full interval later."""
+    from app import dzen
+    from app.collectors import CollectError
+
+    def captcha(queries):
+        raise CollectError('Дзен запросил капчу — сбор остановлен.')
+    monkeypatch.setattr(dzen, 'search', captcha)
+    with api_client(make_api(database_url, Api((403, 'forbidden')))) as api:
+        assert run(api, 'dzen')['error'] == 'Дзен запросил капчу — сбор остановлен.'
+        wait = state(api, 'dzen').next_run_at - datetime.now(timezone.utc)
+        assert timedelta(minutes=239) < wait <= timedelta(minutes=240), 'no repeated searches after a captcha'
+        assert run(api, 'oblgazeta')['error'] == 'HTTP 403'
+        assert timedelta(minutes=59) < state(api, 'oblgazeta').next_run_at - datetime.now(timezone.utc) <= timedelta(minutes=60)
+        with api.app.state.sessions() as db:
+            assert 'oblgazeta' not in due_sources(db, ('rss',)) and due_sources(db, ('dzen',)) == []
+
+
+def test_events_source_is_never_fetched_in_request(database_url, pauses):
+    handler = Api((403, 'forbidden'))
+    with api_client(make_api(database_url, handler)) as api:
+        sessions = api.app.state.sessions
+        add_source(sessions, 'fake-src')
+        run(api)
+        assert source(api)['connection'] == 'no_access' and len(handler.requests) == 1
+        response = api.post('/api/sources/fake-src/collect')
+        assert response.status_code == 409 and '«Проверить»' in response.json()['detail']
+        with sessions() as db:
+            db.execute(text("UPDATE sources SET payload = payload || '{\"enabled\": false}' WHERE id = 'fake-src'"))
+            db.commit()
+        assert api.post('/api/sources/fake-src/collect').status_code == 409
+        assert len(handler.requests) == 1 and len(api.get('/api/sources/fake-src/runs').json()) == 1
+
+
+def test_snapshot_start_survives_partial_run(database_url, monkeypatch, pauses):
+    from fakes import FakeAdapter
+    starts = []
+    monkeypatch.setattr(FakeAdapter, 'snapshot_finished', lambda self, db, started_at: starts.append(started_at))
+    handler = Api((200, {'items': [PERMIT], 'more': True}), (200, {'items': [LOT]}), (200, {'items': [LOT]}))
+    with api_client(make_api(database_url, handler)) as api:
+        sessions = api.app.state.sessions
+        add_source(sessions, 'fake-src', options={'explode': True})
+        first = run(api)
+        assert first['status'] == 'partial' and not starts
+        with sessions() as db:
+            db.execute(text("UPDATE sources SET payload = payload - 'options' WHERE id = 'fake-src'"))
+            db.commit()
+        second = run(api)
+        assert second['status'] == 'ok' and starts == [datetime.fromisoformat(first['startedAt'])], 'export began in the first run'
+        assert state(api).snapshot_started_at is None
+        third = run(api)
+        assert starts[1] == datetime.fromisoformat(third['startedAt'])
+
+
+def test_zero_retry_attempts_means_one_request(database_url, monkeypatch, pauses):
+    monkeypatch.setenv('SOURCE_RETRY_ATTEMPTS', '0')
+    handler = Api((500, 'oops'))
+    with api_client(make_api(database_url, handler)) as api:
+        add_source(api.app.state.sessions, 'fake-src')
+        result = run(api)
+        assert result['error'] == 'HTTP 500' and len(handler.requests) == 1 and result['retries'] == 0

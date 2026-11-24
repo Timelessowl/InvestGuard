@@ -18,6 +18,7 @@ def http_failure(error):
 @register('rss')
 class RssAdapter(SourceAdapter):
     produces = 'documents'
+    short_backoff = False  # as before the adapters: a failed feed waits its schedule, anti-bot 403 is not hammered
 
     def availability(self):
         return 'ready' if self.source.get('url', '').startswith('http') else 'not_configured'
@@ -47,6 +48,7 @@ class RssAdapter(SourceAdapter):
 @register('dzen')
 class DzenAdapter(SourceAdapter):
     produces = 'documents'
+    short_backoff = False  # after a captcha Dzen waits the full schedule
 
     def fetch(self, cursor):
         yield Batch(documents=collectors.fetch_items(self.source, self.http))

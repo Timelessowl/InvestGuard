@@ -2,6 +2,7 @@
 import hashlib
 import json
 import logging
+import math
 import re
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
@@ -47,8 +48,21 @@ def norm_number(value):
     return text.rstrip('0').rstrip('.') if '.' in text else text
 
 
+def scrub(value):
+    """jsonb rejects \\u0000 and NaN/Infinity: NUL is dropped from strings and keys, non-finite numbers become null."""
+    if isinstance(value, str):
+        return value.replace('\x00', '')
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {scrub(key): scrub(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [scrub(item) for item in value]
+    return value
+
+
 def json_safe(value):
-    return json.loads(canonical_json(value))
+    return scrub(json.loads(canonical_json(value)))
 
 
 def dedup_key(item):
@@ -73,6 +87,13 @@ def clean(value, limit=1000):
     return value[:limit] or None
 
 
+def municipality_of(value):
+    """Canonical name from the regional reference; an unknown place (another region, a settlement outside the list)
+    keeps its source spelling so it is not mistaken for a missing one."""
+    value = clean(value, 200)
+    return (canonical_municipality(value) or value) if value else None
+
+
 def sanitize(item):
     """Normalise an adapter item; drops values that would break table constraints instead of the whole batch."""
     inn = clean(item.inn, 12)
@@ -87,7 +108,7 @@ def sanitize(item):
                    company_name=clean(item.company_name, 500), inn=inn if valid_inn(inn) else None,
                    ogrn=ogrn if ogrn and re.fullmatch(r'[0-9]{13}|[0-9]{15}', ogrn) else None,
                    source_company_id=clean(item.source_company_id, 200),
-                   municipality=canonical_municipality(item.municipality) if item.municipality else None,
+                   municipality=municipality_of(item.municipality),
                    address=clean(item.address), cadastral_number=clean(item.cadastral_number, 100), latitude=latitude,
                    longitude=longitude, location_precision=precision, status=clean(item.status, 200),
                    value=Decimal(str(item.value)) if item.value is not None else None, value_unit=clean(item.value_unit, 50),
@@ -215,7 +236,10 @@ def list_events(db, types=None, inn=None, company=None, municipality=None, sourc
     if company:
         conditions.append(folded(EventRecord.company_name).like(escape_like(company.lower().replace('ё', 'е'))))
     if municipality:
-        conditions.append(EventRecord.municipality == (canonical_municipality(municipality) or municipality.strip()))
+        known = canonical_municipality(municipality)
+        # Places outside the reference are stored as the source spelled them: matched by substring.
+        conditions.append(EventRecord.municipality == known if known else
+                          folded(EventRecord.municipality).like(escape_like(municipality.strip().lower().replace('ё', 'е'))))
     if source:
         conditions.append(EventRecord.source_id == source)
     if processing:

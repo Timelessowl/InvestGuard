@@ -12,7 +12,7 @@ from .common import TZ, display_day, initials, overall_score, urgency_for
 from .database import CandidateEventRecord, CandidateRecord, EventRecord, EventTypeRecord, SourceRecord, insert_candidate
 from .focus import FocusError
 from .geo import canonical_municipality, lookup
-from .pipeline import STAGES, attach_evidence
+from .pipeline import STAGES, attach_evidence, detach_evidence
 from .schemas import Candidate
 
 log = logging.getLogger(__name__)
@@ -49,6 +49,11 @@ def evidence_for_event(event, kind, source_name):
             'eventType': event.event_type, 'occurredAt': occurred(event).isoformat()}
 
 
+def known_place(place):
+    """Municipality from the regional reference; other places are kept as the source spelled them."""
+    return canonical_municipality(place) == place
+
+
 def reference(db):
     """Event types and source names, loaded once per linking batch."""
     return ({t.code: t for t in db.scalars(select(EventTypeRecord))},
@@ -79,9 +84,31 @@ class Linker:
             self.link(record, event, 'manual_review', reason)
         return self.finish(event, 'review', reason)
 
+    def unlink(self, event):
+        """Drops the event's rule links, analyst links stay; returns the cards they pointed to."""
+        return set(self.db.scalars(delete(CandidateEventRecord)
+                                   .where(CandidateEventRecord.event_id == event.id, CandidateEventRecord.linked_by == 'rule')
+                                   .returning(CandidateEventRecord.candidate_number)))
+
+    def drop_evidence(self, event, numbers):
+        """Event evidence stays only in cards still linked to it as confirmed or probable."""
+        kept = set(self.db.scalars(select(CandidateEventRecord.candidate_number)
+                                   .where(CandidateEventRecord.event_id == event.id, CandidateEventRecord.confidence != 'manual_review')))
+        stale = numbers - kept
+        if not stale:
+            return
+        for record in self.db.scalars(select(CandidateRecord).where(CandidateRecord.number.in_(stale)).order_by(CandidateRecord.number)
+                                      .with_for_update().execution_options(populate_existing=True)):
+            detach_evidence(record, event.id)
+
     def run(self, event):
-        # A re-evaluated event (content changed) drops its old rule links, analyst links stay.
-        self.db.execute(delete(CandidateEventRecord).where(CandidateEventRecord.event_id == event.id, CandidateEventRecord.linked_by == 'rule'))
+        # A re-evaluated event (content changed) is decided afresh: old rule links go, evidence stays only where it is linked again.
+        previous = self.unlink(event)
+        status = self.decide(event)
+        self.drop_evidence(event, previous)
+        return status
+
+    def decide(self, event):
         kind = self.types.get(event.event_type)
         policy = kind.link_policy if kind else 'company'
         if policy == 'aggregate':
@@ -96,6 +123,8 @@ class Linker:
         if not records:
             return self.threshold(event)
         place = event.municipality
+        if place and not known_place(place):
+            return self.suggest(records, event, f'Муниципалитет события «{place}» не найден в справочнике области: проверьте площадку')
         if len(records) == 1:
             record = records[0]
             city = canonical_municipality(record.payload.get('city'))
@@ -128,10 +157,16 @@ class Linker:
         categories = {self.types[e.event_type].category for e in group}
         if len(categories) < need:
             return self.finish(event, 'waiting', f'Недостаточно признаков проекта: категорий {len(categories)} из {need} за {window} дней')
+        unknown = sorted(place for place in places if not known_place(place))
+        if unknown:
+            return self.finish(event, 'review', f'Муниципалитет «{unknown[0]}» не найден в справочнике области: карточка не создаётся')
         record = self.create_card(group, places)
         for item in group:
+            # Other events of the group skip their own run: their old rule links and evidence go here.
+            previous = self.unlink(item) if item.id != event.id else set()
             self.link(record, item, 'confirmed', f'Порог: категорий событий {len(categories)} за {window} дней')
             self.finish(item, 'linked', f'Создана карточка {record.payload["id"]}')
+            self.drop_evidence(item, previous)
         return 'linked'
 
     def create_card(self, group, places):

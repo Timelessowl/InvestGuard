@@ -123,6 +123,7 @@ class SourceAdapter(ABC):
     scheduled: ClassVar[bool] = True  # imports: False
     required_env: ClassVar[tuple[str, ...]] = ()
     retry_delay: ClassVar[float] = 1.0
+    short_backoff: ClassVar[bool] = True  # False: after any error wait the full schedule
 
     def __init__(self, source: dict, http: httpx.Client | None):
         self.source = source
@@ -157,10 +158,12 @@ class SourceAdapter(ABC):
         ...
 
     def snapshot_finished(self, db, started_at):
-        """Called after the last batch of a full export: adapters may close records that disappeared."""
+        """Called after the last batch of a full export (snapshot_complete). started_at is when this export began,
+        possibly in an earlier partial run continued by cursor: records with last_seen_at < started_at disappeared."""
 
     def request_json(self, url, params=None, *, attempts=None, headers=None, timeout=None):
-        attempts = attempts or env_int('SOURCE_RETRY_ATTEMPTS', 3)
+        # 1 means a single request without retries; 0 or less would make no request at all.
+        attempts = max(1, attempts or env_int('SOURCE_RETRY_ATTEMPTS', 3))
         max_wait = env_int('SOURCE_MAX_RETRY_AFTER', 300)
         error = None
         for attempt in range(attempts):
