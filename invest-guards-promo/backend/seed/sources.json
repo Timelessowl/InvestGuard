@@ -24,5 +24,11 @@
   {"id": "cnews", "name": "CNews", "category": "Отраслевые порталы", "url": "https://www.cnews.ru/inc/rss/news.xml", "regional": false, "scheduleMinutes": 180},
   {"id": "dzen", "name": "Яндекс Дзен", "category": "Дзен", "kind": "dzen", "url": "https://dzen.ru/search", "regional": false, "scheduleMinutes": 240,
    "queries": ["завод Свердловская область", "новое производство Екатеринбург", "инвестиционный проект Свердловская область",
-               "строительство цеха Урал", "Титановая долина резидент"]}
+               "строительство цеха Урал", "Титановая долина резидент"]},
+  {"id": "trudvsem", "name": "Работа России", "category": "Кадровые источники", "group": "hiring", "kind": "trudvsem",
+   "url": "https://trudvsem.ru/", "regional": true, "scheduleMinutes": 360, "dataType": "Вакансии работодателей Свердловской области",
+   "docsUrl": "https://trudvsem.ru/opendata/api", "options": {"regionCode": "6600000000000", "pageSize": 100}},
+  {"id": "hiring-signals", "name": "Кадровая аналитика", "category": "Кадровые источники", "group": "hiring", "kind": "derived",
+   "regional": true, "scheduleMinutes": 1440, "dataType": "Кадровые сигналы по вакансиям: массовый найм, рост, новый муниципалитет, запуск производства",
+   "options": {"from": ["trudvsem"]}}
 ]

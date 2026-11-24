@@ -151,8 +151,8 @@ def test_not_configured_source_makes_no_requests(database_url, monkeypatch, paus
     with api_client(make_api(database_url, handler)) as api:
         sessions = api.app.state.sessions
         add_source(sessions, 'keyed', kind='fake-keyed')
-        add_source(sessions, 'trudvsem-planned', kind='trudvsem')
-        for source_id in ('keyed', 'trudvsem-planned'):
+        add_source(sessions, 'hh-planned', kind='hh')
+        for source_id in ('keyed', 'hh-planned'):
             response = api.post(f'/api/sources/{source_id}/collect').json()
             assert response['queued'] is False and response['source']['status'] == 'not_configured'
             assert response['source']['connection'] == 'not_configured' and response['source']['lastError']
@@ -162,7 +162,7 @@ def test_not_configured_source_makes_no_requests(database_url, monkeypatch, paus
         assert 'FAKE_SOURCE_KEY' in source(api, 'keyed')['lastError']
         assert api.get('/api/sources/keyed/runs').json()[0]['status'] == 'not_configured'
         state = api.get('/api/state').json()
-        assert not any(s['status'] == 'active' for s in state['sources'] if s['id'] in ('keyed', 'trudvsem-planned'))
+        assert not any(s['status'] == 'active' for s in state['sources'] if s['id'] in ('keyed', 'hh-planned'))
         monkeypatch.setenv('FAKE_SOURCE_KEY', 'secret')
         assert source(api, 'keyed')['connection'] == 'ready' and source(api, 'keyed')['status'] == 'active'
         assert api.post('/api/sources/keyed/collect').json()['queued'] is True

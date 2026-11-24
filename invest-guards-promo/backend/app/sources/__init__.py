@@ -5,10 +5,9 @@ from .base import (Batch, EventItem, SourceAccessDenied, SourceAdapter, SourceDa
                    SourceRateLimited)
 
 REGISTRY: dict[str, type[SourceAdapter]] = {}
-MODULES = ('news', 'imports')
+MODULES = ('news', 'imports', 'trudvsem', 'derived')
 # Kinds reserved for later prompts: shown as "not configured", never as a working integration.
 PLANNED = {
-    'trudvsem': 'Адаптер «Работы России» ещё не подключён.',
     'hh': 'Адаптер HeadHunter не подключён: нужен доступ к API hh.ru.',
     'torgi': 'Адаптер ГИС Торги ещё не подключён.',
     'egrz': 'Адаптер ЕГРЗ ещё не подключён.',
