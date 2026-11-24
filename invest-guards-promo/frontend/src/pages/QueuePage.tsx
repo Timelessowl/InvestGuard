@@ -432,6 +432,7 @@ function RiskDot({ candidate }: { candidate: Candidate }) {
 function OriginChip({ candidate }: { candidate: Candidate }) {
   if (candidate.origin === "ai") return <span className="ai-chip">ИИ</span>;
   if (candidate.origin === "demo") return <span className="ai-chip demo-chip">Демо</span>;
+  if (candidate.origin === "events") return <span className="ai-chip">События</span>;
   return null;
 }
 function ShieldNote() {

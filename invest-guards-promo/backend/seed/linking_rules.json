@@ -1,0 +1,5 @@
+{
+  "windowDays": 180,
+  "minCategoriesForCard": 2,
+  "maxReviewSuggestions": 5
+}
