@@ -505,9 +505,9 @@ CREATE INDEX candidates_inn_idx ON candidates (inn_key) WHERE inn_key IS NOT NUL
 
 - Рабочий API — `https://opendata.trudvsem.ru/api/v1` (HTTPS и HTTP оба отвечают), ключ не нужен. Документация, указанная в ТЗ, лежит на dev-стенде `web-mbl-dev01.k8s.trudvsem.ru/opendata/api` и отдаётся как HTML-приложение. Перед реализацией сверить параметры с ней вручную; HTML не разбирать.
 - `GET /vacancies/region/6600000000000` — вакансии Свердловской области. В ответе `region.region_code = 6600000000000`, `name = «Свердловская область»`. На дату проверки `meta.total` = 16 431.
-- **Пагинация.** `offset` — номер страницы, а не смещение: `offset=1&limit=3` вернул записи 4–6. `limit` ограничен 100 (при запросе 101 ответ содержит `meta.limit=100`). Полная выгрузка — около 165 запросов.
+- **Пагинация.** `offset` — номер страницы, а не смещение: `offset=1&limit=3` вернул записи 4–6. `limit` ограничен 100 (при запросе 101 ответ содержит `meta.limit=100`). На один запрос API отдаёт не больше 10 000 записей (так в документации; проверено 25.11.2026: `offset=100&limit=100` отвечает HTTP 500), поэтому полная выгрузка делится на окна по `modifiedFrom`/`modifiedTo` (обе границы включительно) — около 175 запросов.
 - **Инкремент.** `modifiedFrom=2026-11-23T00:00:00Z` вернул 2 120 записей, около 22 запросов в сутки.
-- Есть выборка по компании: `/vacancies/company/inn/{inn}` и `/vacancies/company/{ogrn}`.
+- Есть выборка по компании: `/vacancies/company/inn/{inn}`, `/vacancies/company/ogrn/{ogrn}` и `/vacancies/company/{companyCode}`.
 - **Поля вакансии** (выборка из 100):
   - `id`, `source` («Вакансия работодателя» — 98, «Вакансия интернет ресурса» — 2), `creation-date`, `date_modify`;
   - `salary_min`, `salary_max`, `currency`, `job-name`, `vac_url`, `schedule`, `employment` (у 47%);
@@ -533,7 +533,7 @@ CREATE INDEX candidates_inn_idx ON candidates (inn_key) WHERE inn_key IS NOT NUL
 | `backend/app/sources/trudvsem.py` | `TrudvsemAdapter`: API → `Vacancy` → `EventItem(vacancy_opened, details_kind='vacancy')` |
 | `backend/seed/vacancy_categories.json` | Справочник категорий профессий и исключений |
 | `backend/seed/hiring_signals.json` | Пороги сигналов |
-| `backend/migrations/005_vacancies.sql` | Таблицы ниже |
+| `backend/migrations/006_vacancies.sql` | Таблицы ниже (номер 005 занят `005_snapshot_started.sql`) |
 | `backend/tests/test_trudvsem.py`, `test_vacancies.py`, `tests/fixtures/trudvsem_page_*.json` | Тесты; фикстуры обезличены, без контактов |
 
 Изменить:
@@ -571,7 +571,7 @@ CREATE INDEX candidates_inn_idx ON candidates (inn_key) WHERE inn_key IS NOT NUL
 
 Названия в ключе не используются никогда.
 
-### 6.4. PostgreSQL: `005_vacancies.sql`
+### 6.4. PostgreSQL: `006_vacancies.sql`
 
 ```sql
 CREATE TABLE vacancy_employers (
