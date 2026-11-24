@@ -144,6 +144,22 @@ def test_broken_dictionary_stops_startup(database_url, tmp_path, monkeypatch):
         initialize(make_engine(database_url))
 
 
+def test_edited_dictionary_reclassifies_stored_vacancies(sessions, tmp_path, monkeypatch):
+    event_id = add(sessions, PLANT, 'Аппаратчик', ago(5))
+    assert jobs.refresh(sessions, as_of=AS_OF)['reclassified'] == 0, 'written with the current dictionary'
+    edited = json.loads(load_book().model_dump_json())
+    edited['categories'] = [c for c in edited['categories'] if c['code'] != 'line_operator']
+    edited['launchCombo'] = [c for c in edited['launchCombo'] if c != 'line_operator']
+    path = tmp_path / 'categories.json'
+    path.write_text(json.dumps(edited, ensure_ascii=False), encoding='utf-8')
+    monkeypatch.setenv('VACANCY_CATEGORIES_PATH', str(path))
+    assert jobs.refresh(sessions, as_of=AS_OF)['reclassified'] == 1
+    assert jobs.refresh(sessions, as_of=AS_OF)['reclassified'] == 0, 'applied once'
+    with sessions() as db:
+        assert db.execute(text('SELECT category, profile FROM vacancy_details WHERE event_id = :id'), {'id': event_id}).one() == \
+            (None, 'production')
+
+
 def test_indicators_on_fixed_dates(sessions):
     key = f'inn:{PLANT}'
     add(sessions, PLANT, 'Слесарь-ремонтник', ago(10), places=3)

@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 DEFAULT_BASE = 'https://opendata.trudvsem.ru/api/v1'
 DEFAULT_REGION = '6600000000000'  # Свердловская область, region.region_code in the API answer
 FLOOR = datetime(2000, 1, 1, tzinfo=timezone.utc)
+FLOOR_MARGIN = timedelta(days=30)
 RECORD_CAP = 10_000  # documented per-query limit
 WINDOW_LIMIT = 9_000  # split earlier: the open newest window grows while it is paged
 SYNDICATED = 'Вакансия интернет ресурса'
@@ -31,6 +32,7 @@ RAW_FIELDS = ('id', 'source', 'region.region_code', 'region.name', 'creation-dat
               'company.inn', 'company.ogrn', 'company.kpp', 'company.companycode', 'company.name', 'company.hr-agency',
               'company.url', 'company.site')
 TEXT_LIMIT = 2000
+CHECK_TIMEOUT = 25
 clock = lambda: datetime.now(timezone.utc)  # noqa: E731 - tests replace it
 
 
@@ -81,6 +83,17 @@ def source_day(value):
         return None
 
 
+def windows_from(lower, now):
+    """Windows oldest first, open above: wide where old vacancies are sparse, one, two, four… days near now where most are.
+    Bounds are inclusive, so a boundary second is read twice (upsert keeps one)."""
+    edges, days = [], 1
+    while now - timedelta(days=days) > lower:
+        edges.append(now - timedelta(days=days))
+        days *= 2
+    edges = [lower] + edges[::-1]
+    return [[stamp(a), stamp(b)] for a, b in zip(edges, edges[1:])] + [[stamp(edges[-1]), None]]
+
+
 def split(window, now):
     """Two halves by modification time; both bounds are inclusive, so the middle second is read twice (upsert keeps one)."""
     lower, upper = moment(window[0]), moment(window[1]) if window[1] else now
@@ -103,6 +116,8 @@ class TrudvsemAdapter(SourceAdapter):
         self.max_pages = max(1, env_number('TRUDVSEM_MAX_PAGES', 300))
         self.full_days = env_number('TRUDVSEM_FULL_SYNC_DAYS', 7, float)
         self.overlap = timedelta(minutes=env_number('TRUDVSEM_OVERLAP_MINUTES', 60))
+        # The API answers in 12-15 s whatever the page size (measured 25.11.2026).
+        self.timeout = max(5.0, env_number('TRUDVSEM_TIMEOUT_SECONDS', 60, float))
 
     @property
     def url(self):
@@ -118,7 +133,8 @@ class TrudvsemAdapter(SourceAdapter):
     def check(self):
         if self.availability() != 'ready':
             return False, self.not_ready_message()
-        data = self.request_json(self.url, {'offset': 0, 'limit': 1}, attempts=1, timeout=10)
+        # Below the 30 s frontend timeout of the check button.
+        data = self.request_json(self.url, {'offset': 0, 'limit': 1}, attempts=1, timeout=min(self.timeout, CHECK_TIMEOUT))
         total, _ = self.parse_meta(data)
         return True, f'API доступен, вакансий в регионе: {total}.'
 
@@ -136,12 +152,18 @@ class TrudvsemAdapter(SourceAdapter):
             raise SourceDataError('results.vacancies не список: схема изменилась.')
         return total, items
 
+    def full_floor(self, cursor):
+        """Modification time only grows: the next full export starts a margin below the oldest one met last time."""
+        oldest = cursor.get('oldest_modified')
+        return max(FLOOR, moment(oldest) - FLOOR_MARGIN) if oldest else FLOOR
+
     def full_due(self, cursor, now):
         done = cursor.get('full_sync_at')
         return not cursor.get('modified_from') or not done or now - moment(done) >= timedelta(days=self.full_days)
 
     def fetch(self, cursor):
-        """One pass: full (weekly, from FLOOR) or incremental (from the last pass start minus the overlap). Windows go
+        """One pass: full (weekly, from below the oldest modification) or incremental (from the last pass start minus the
+        overlap). Windows go
         oldest first, the open newest one last, so a vacancy edited during the pass is still met. Position is in the cursor:
         a failed or capped run continues the same pass."""
         state = copy.deepcopy(cursor or {})
@@ -149,8 +171,8 @@ class TrudvsemAdapter(SourceAdapter):
         current = state.get('pass')
         if not current:
             full = self.full_due(state, now)
-            lower = FLOOR if full else moment(state['modified_from'])
-            current = {'mode': 'full' if full else 'incremental', 'startedAt': stamp(now), 'windows': [[stamp(lower), None]], 'page': 0}
+            lower = self.full_floor(state) if full else moment(state['modified_from'])
+            current = {'mode': 'full' if full else 'incremental', 'startedAt': stamp(now), 'windows': windows_from(lower, now), 'page': 0}
         requests = 0
         while current['windows']:
             if requests >= self.max_pages:
@@ -162,13 +184,16 @@ class TrudvsemAdapter(SourceAdapter):
             params = {'offset': page, 'limit': self.page_size, 'modifiedFrom': window[0]}
             if window[1]:
                 params['modifiedTo'] = window[1]
-            data = self.request_json(self.url, params)
+            data = self.request_json(self.url, params, timeout=self.timeout)
             requests += 1
             total, items = self.parse_meta(data)
             if page == 0 and total > WINDOW_LIMIT:
                 current['windows'][0:1] = split(window, now)
                 continue
             events, rejected = self.parse_items(items)
+            oldest = min((e.details['modified_at'] for e in events if e.details.get('modified_at')), default=None)
+            if oldest and (not current.get('oldest') or oldest < moment(current['oldest'])):
+                current['oldest'] = stamp(oldest)
             if not items or (page + 1) * self.page_size >= min(total, RECORD_CAP):
                 current['windows'].pop(0)
                 current['page'] = 0
@@ -180,6 +205,8 @@ class TrudvsemAdapter(SourceAdapter):
                 state['modified_from'] = stamp(moment(current['startedAt']) - self.overlap)
                 if current['mode'] == 'full':
                     state['full_sync_at'] = current['startedAt']
+                    if current.get('oldest'):
+                        state['oldest_modified'] = current['oldest']
             else:
                 state['pass'] = current
             yield Batch(events=events, rejected=rejected, cursor=copy.deepcopy(state), snapshot_complete=done and current['mode'] == 'full')
