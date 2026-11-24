@@ -169,7 +169,9 @@ export function CandidateDialog({
           <p className="helper">
             {candidate.origin === "ai"
               ? `Оценка GigaChat по ${candidate.evidence.length} ${candidate.evidence.length === 1 ? "источнику" : "источникам"}. Решение принимает эксперт.`
-              : "Предварительная оценка по демо-модели. Решение принимает эксперт."}
+              : candidate.origin === "events"
+                ? "Карточка собрана правилами из событий источников, оценка предварительная. Решение принимает эксперт."
+                : "Предварительная оценка по демо-модели. Решение принимает эксперт."}
           </p>
         </section>
         <section className="detail-section">
