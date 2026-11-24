@@ -172,11 +172,16 @@ def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_
                           'идёт минутами и не укладывается в таймаут запроса.')
     def collect(source_id: str, request: Request, db: Session = Depends(session)):
         source = service.get_source(db, source_id)
-        if source.produces == 'events' and source.connection == 'ready':
+        if source.produces == 'events':
+            # An events source never fetches inside the HTTP request.
             if not source.enabled:
                 raise service.Conflict('Источник отключён в настройках, сбор не запускается.')
-            request_run(db, source_id)
-            return CollectResult(source=service.get_source(db, source_id), added=0, queued=True)
+            if source.connection == 'no_access':
+                raise service.Conflict('Источник отклонил ключ или доступ: исправьте настройку и нажмите «Проверить».')
+            if source.connection == 'ready':
+                request_run(db, source_id)
+                return CollectResult(source=service.get_source(db, source_id), added=0, queued=True)
+            # Not configured or file-only: the runner only records the reason, without network.
         _, added = collect_source(db, source_id, request.app.state.http)
         return CollectResult(source=service.get_source(db, source_id), added=added)
 

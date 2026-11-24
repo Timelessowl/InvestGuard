@@ -1,4 +1,6 @@
 """Structured events: storage, raw JSON, repeat loads, versions and the events API."""
+from dataclasses import replace
+
 import httpx
 import pytest
 from sqlalchemy import func, select
@@ -130,3 +132,43 @@ def test_unknown_event_type_is_rejected_not_fatal(database_url, kind):
         with api.app.state.sessions() as db:
             run = sync_source(db, 'fake-src', api.app.state.http)
         assert run['status'] == 'ok' and run['inserted'] == 1 and run['rejected'] == 1
+
+
+def test_nul_and_nan_in_json_do_not_break_batch(database_url):
+    """jsonb rejects \\u0000 and NaN: such values are cleaned, neighbours in the batch are stored, the source moves on."""
+    from app.sources.runner import push_events
+    from fakes import item_from
+    dirty = {**PERMIT, 'id': 'p-nul', 'status': 'Выдано\u0000', 'metrics': [{'name': 'area\u0000', 'value': 1, 'unit': 'га\u0000'}]}
+    with api_client(make_api(database_url, Api((200, {'items': [dirty, LOT]})))) as api:
+        sessions = api.app.state.sessions
+        add_source(sessions, 'fake-src')
+        add_source(sessions, 'rosseti', kind='import')
+        with sessions() as db:
+            assert sync_source(db, 'fake-src', api.app.state.http)['inserted'] == 2
+            item = item_from({**VACANCY, 'id': 'v-nul', 'type': 'construction_permit'})
+            item = replace(item, raw={'note\u0000': 'a\u0000b', 'score': float('nan')}, metrics=({'name': 'x', 'value': float('inf')},))
+            pushed = push_events(db, 'rosseti', [item, item_from(LOT)])
+            assert pushed['status'] == 'ok' and pushed['inserted'] == 2
+        saved = api.get('/api/events?source=fake-src&type=construction_permit').json()['items'][0]
+        detail = api.get(f'/api/events/{saved["id"]}').json()
+        assert detail['status'] == 'Выдано' and detail['raw']['status'] == 'Выдано'
+        assert detail['metrics'] == [{'name': 'area', 'value': 1, 'unit': 'га'}]
+        imported = api.get('/api/events?source=rosseti&type=construction_permit').json()['items'][0]
+        detail = api.get(f'/api/events/{imported["id"]}').json()
+        assert detail['raw'] == {'note': 'ab', 'score': None} and detail['metrics'] == [{'name': 'x', 'value': None}]
+
+
+def test_failed_import_is_recorded(database_url, monkeypatch):
+    from app.sources import runner
+    from fakes import item_from
+
+    def broken(db, source_id, items):
+        raise RuntimeError('db is gone')
+    with api_client(make_api(database_url, Api((200, {'items': []})))) as api:
+        sessions = api.app.state.sessions
+        add_source(sessions, 'rosseti', kind='import')
+        monkeypatch.setattr(runner, 'upsert_events', broken)
+        with sessions() as db:
+            result = runner.push_events(db, 'rosseti', [item_from(LOT)])
+        assert result['status'] == 'error' and result['error'] == 'Внутренняя ошибка: RuntimeError' and result['inserted'] == 0
+        assert api.get('/api/sources/rosseti/runs').json()[0]['status'] == 'error'

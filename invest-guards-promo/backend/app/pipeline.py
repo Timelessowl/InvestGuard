@@ -116,6 +116,17 @@ def evidence_for(doc, source_name, quote=None):
             'occurredAt': moment.astimezone(TZ).date().isoformat()}
 
 
+def detach_evidence(record, event_id):
+    """Removes the evidence of an event that no longer supports the card."""
+    candidate = Candidate.model_validate(record.payload)
+    kept = [e for e in candidate.evidence if e.eventId != event_id]
+    if len(kept) < len(candidate.evidence):
+        candidate.evidence = kept
+        record.payload = candidate.model_dump()
+        record.updated_at = datetime.now(timezone.utc)
+    return candidate
+
+
 def attach_evidence(record, evidence):
     candidate = Candidate.model_validate(record.payload)
     event_id = evidence.get('eventId')

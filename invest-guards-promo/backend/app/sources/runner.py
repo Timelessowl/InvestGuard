@@ -129,6 +129,10 @@ def _run(db, source_id, payload, http, trigger):
         if availability != 'ready':
             status, error, kind = ('skipped' if availability == 'manual_only' else 'not_configured'), adapter.not_ready_message(), availability
         else:
+            # A full export may span several runs continued by cursor: it began with the first run after the previous one ended.
+            # Saved with the first batch; a run that fails before it leaves the start to the next run.
+            if state.snapshot_started_at is None:
+                state.snapshot_started_at = run.started_at
             for batch in adapter.fetch(state.sync_cursor):
                 write_batch(db, source_id, batch, stats)
                 if batch.cursor is not None:
@@ -139,7 +143,8 @@ def _run(db, source_id, payload, http, trigger):
                 db.commit()
                 batches += 1
                 if batch.snapshot_complete:
-                    adapter.snapshot_finished(db, run.started_at)
+                    adapter.snapshot_finished(db, state.snapshot_started_at or run.started_at)
+                    state.snapshot_started_at = None
                     db.commit()
     except LookupError as failure:
         db.rollback()
@@ -157,10 +162,11 @@ def _run(db, source_id, payload, http, trigger):
         status, error, kind = ('partial' if batches else 'error'), f'Внутренняя ошибка: {type(failure).__name__}', 'internal'
     if status in ('error', 'partial'):
         log.warning('Source %s failed: %s', source_id, error)
-    return _finish(db, source_id, payload, run.id, status, stats, error, kind, retryable, retry_after, adapter.retries if adapter else 0)
+    backoff = retryable and adapter is not None and adapter.short_backoff
+    return _finish(db, source_id, payload, run.id, status, stats, error, kind, backoff, retry_after, adapter.retries if adapter else 0)
 
 
-def _finish(db, source_id, payload, run_id, status, stats, error, kind, retryable, retry_after, retries):
+def _finish(db, source_id, payload, run_id, status, stats, error, kind, backoff, retry_after, retries):
     run = db.get(SourceRunRecord, run_id, populate_existing=True)
     finish_run(db, run, status, stats, error, retries)
     state = ensure_state(db, source_id)
@@ -174,7 +180,8 @@ def _finish(db, source_id, payload, run_id, status, stats, error, kind, retryabl
     else:
         state.consecutive_failures += 1
         base = timedelta(minutes=env_int('SOURCE_BACKOFF_BASE_MINUTES', 5))
-        delay = min(schedule, base * 2 ** min(state.consecutive_failures - 1, 16)) if retryable else schedule
+        # Short backoff only for retryable errors of adapters that allow it; RSS and Dzen keep their schedule.
+        delay = min(schedule, base * 2 ** min(state.consecutive_failures - 1, 16)) if backoff else schedule
         if retry_after:
             delay = max(delay, timedelta(seconds=retry_after))
         state.last_error, state.last_error_kind, state.next_run_at = error, kind, now + delay
@@ -192,7 +199,7 @@ def _finish(db, source_id, payload, run_id, status, stats, error, kind, retryabl
 
 
 def push_events(db, source_id, items, trigger='manual'):
-    """Store events handed over directly (file import) as one recorded run."""
+    """Store events handed over directly (file import) as one recorded run; a failed batch is recorded, not raised."""
     if not db.get(SourceRecord, source_id):
         raise LookupError(source_id)
     db.commit()
@@ -201,11 +208,21 @@ def push_events(db, source_id, items, trigger='manual'):
         stats = dict.fromkeys(COUNTERS, 0)
         if not locked:
             finish_run(db, run, 'skipped', stats, 'Источник сейчас обновляется, повторите загрузку позже.')
-        else:
-            stats['fetched'] = len(items)
+            db.commit()
+            return run_summary(run)
+        db.commit()  # the run record survives a rollback of the batch
+        status, error = 'ok', None
+        try:
             for key, value in upsert_events(db, source_id, items).items():
                 stats[key] += value
-            finish_run(db, run, 'ok', stats)
+        except Exception as failure:  # noqa: BLE001 - the import is answered with a failed run
+            db.rollback()
+            log.exception('Import into %s failed', source_id)
+            status, error, stats = 'error', f'Внутренняя ошибка: {type(failure).__name__}', dict.fromkeys(COUNTERS, 0)
+        stats['fetched'] = len(items)
+        run = db.get(SourceRunRecord, run.id, populate_existing=True)
+        finish_run(db, run, status, stats, error)
+        if status == 'ok':
             ensure_state(db, source_id).last_success_at = run.finished_at
         db.commit()
         return run_summary(run)
