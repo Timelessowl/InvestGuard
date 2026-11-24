@@ -34,6 +34,8 @@ export async function initAnalytics(fetcher: typeof fetch = (...args) => fetch(.
     script.src = "/stats/script.js";
     script.defer = true;
     script.dataset.websiteId = config.websiteId;
+    // Umami defaults to omitting credentials, but the same-origin proxy can require app login.
+    script.dataset.fetchCredentials = "same-origin";
     script.onload = () => {
       for (const [name, data] of pending.splice(0)) window.umami?.track(name, data);
     };

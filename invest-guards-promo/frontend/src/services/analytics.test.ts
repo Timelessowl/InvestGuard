@@ -28,6 +28,7 @@ describe("analytics", () => {
     expect(scripts).toHaveLength(1);
     expect(scripts[0].src).toBe("/stats/script.js");
     expect(scripts[0].dataset.websiteId).toBe("site-1");
+    expect(scripts[0].dataset.fetchCredentials).toBe("same-origin");
     const sent: unknown[] = [];
     window.umami = { track: (...args) => sent.push(args) };
     scripts[0].onload?.();
