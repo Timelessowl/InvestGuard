@@ -11,6 +11,7 @@ from app.common import TZ
 from app.database import CandidateRecord, EventRecord, EventVersionRecord, VacancySnapshotRecord, initialize, make_engine, session_factory
 from app.events import upsert_events
 from app.linking import link_pending_events
+from app.service import hiring_stats
 from app.vacancies import SIGNAL_SOURCE, aggregates, jobs, signals, store  # noqa: F401 - store registers the writer
 from app.vacancies.categories import CategoryBook, load_book
 from app.vacancies.model import Vacancy, employer_key, fingerprint, municipality_from_address, scrub_contacts, title_norm
@@ -279,6 +280,8 @@ def test_signals_are_stored_per_episode(sessions):
     assert nameless.source_company_id == '0b1f0c7e-1' and nameless.raw['matching'] and nameless.ogrn is None
     with sessions() as db:
         assert db.scalar(text('SELECT count(*) FROM vacancy_employer_snapshots WHERE snapshot_date = :d'), {'d': AS_OF}) == 2
+        stats = hiring_stats(db)
+    assert stats['trudvsem']['signals'] == 2 and stats[SIGNAL_SOURCE]['activeSignals'] == 2 and stats[SIGNAL_SOURCE]['employers'] == 2
     again = jobs.refresh(sessions, as_of=AS_OF)
     assert (again['run']['inserted'], again['run']['unchanged']) == (0, 2) and len(hiring_events(sessions)) == 2
     # A month later nothing new was published: the episode ends instead of a new signal appearing.
@@ -329,8 +332,11 @@ def test_worker_runs_hiring_analytics_after_sync(database_url, monkeypatch):
             snapshots = db.scalar(text('SELECT count(*) FROM vacancy_employer_snapshots WHERE snapshot_date = :d'), {'d': jobs.today()})
             daily = db.scalar(text("SELECT payload->>'date' FROM app_metadata WHERE key = 'hiring_daily'"))
         assert snapshots == 3 and daily == jobs.today().isoformat()
-        source = next(s for s in api.get('/api/sources').json() if s['id'] == SIGNAL_SOURCE)
+        listed = {s['id']: s for s in api.get('/api/sources').json()}
+        source = listed[SIGNAL_SOURCE]
         assert source['lastRunStats']['status'] == 'ok' and source['lastRun'] != 'Ещё не запускался'
+        assert listed['trudvsem']['hiring'] == {'vacancies': 4, 'activeVacancies': 3, 'employers': 3, 'signals': 0, 'activeSignals': 0}
+        assert source['hiring']['signals'] == 0 and listed['oblgazeta']['hiring'] is None
         assert jobs.hiring_step(sessions) == {'employers': 0, 'signals': 0}, 'nothing new: nothing recomputed'
         api.post(f'/api/sources/{SIGNAL_SOURCE}/collect')
         assert jobs.hiring_step(sessions)['employers'] == 3, 'manual request recomputes everything'

@@ -137,6 +137,15 @@ class RunStats(BaseModel):
     error: str | None = None
 
 
+class HiringStats(BaseModel):
+    """Job sources and hiring analytics: loaded vacancies and the hiring signals found from them."""
+    vacancies: int = 0
+    activeVacancies: int = 0
+    employers: int = 0
+    signals: int = 0
+    activeSignals: int = 0
+
+
 class DataSource(BaseModel):
     id: str
     name: str
@@ -161,6 +170,7 @@ class DataSource(BaseModel):
     connection: Connection = 'ready'
     lastRunStats: RunStats | None = None
     lastCheck: dict | None = None
+    hiring: HiringStats | None = None
     lastRun: str
     lastRunAt: str | None = None
     lastError: str | None = None

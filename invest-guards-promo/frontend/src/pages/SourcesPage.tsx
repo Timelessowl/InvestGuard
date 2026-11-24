@@ -186,7 +186,22 @@ export default function SourcesPage() {
                   <SourceHealth source={source} />
                 </div>
                 <div className="source-details">
-                  {source.produces === "events" ? (
+                  {source.hiring && source.kind !== "derived" ? (
+                    <>
+                      <span>
+                        {source.hiring.vacancies} вакансий, актуальных {source.hiring.activeVacancies}
+                      </span>
+                      <span>{source.hiring.employers} работодателей</span>
+                      <span>Кадровых сигналов: {source.hiring.signals}</span>
+                    </>
+                  ) : source.hiring ? (
+                    <>
+                      <span>
+                        Кадровых сигналов: {source.hiring.signals}, действующих {source.hiring.activeSignals}
+                      </span>
+                      <span>{source.eventSignals} связано с карточками</span>
+                    </>
+                  ) : source.produces === "events" ? (
                     <>
                       <span>{source.events} событий</span>
                       <span>{source.eventSignals} связано с карточками</span>
