@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 import httpx
-from fastapi.testclient import TestClient
+from conftest import api_client
 
 from app.focus import FocusSettings, valid_inn
 from app.llm import LlmSettings
@@ -67,7 +67,7 @@ def test_scoring_on_real_and_risky_company():
 
 def test_risk_check_endpoint_cache_limit_and_export(database_url):
     app, focus = make_api(database_url, limit=1)
-    with TestClient(app) as api:
+    with api_client(app) as api:
         assert api.post('/api/candidates/INV-0254/risk-check', json={}).status_code == 400
         assert api.post('/api/candidates/INV-0254/risk-check', json={'inn': '6661005708'}).status_code == 400
         assert not focus.calls
@@ -97,7 +97,7 @@ def test_assistant_checks_company(database_url):
     app = create_app(database_url, worker=False, llm_transport=httpx.MockTransport(llm),
                      llm_settings=LlmSettings(base_url='https://llm.test/v1', api_key='k'),
                      focus_transport=httpx.MockTransport(focus), focus_settings=FocusSettings(api_key='test-key'))
-    with TestClient(app) as api:
+    with api_client(app) as api:
         reply = api.post('/api/chat', json={'messages': [{'role': 'user', 'content': 'Проверь инициатора INV-0261, ИНН 7707083893'}]}).json()
         assert reply['changed'] and reply['trace'][0]['summary'].startswith('ООО "Рога и копыта": красная зона')
         assert api.get('/api/candidates/INV-0261').json()['risk']['verdict'] == 'red'
