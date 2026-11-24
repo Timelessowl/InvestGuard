@@ -20,6 +20,7 @@ from test_source_runner import make_api
 PAGE = json.loads((Path(__file__).parent / 'fixtures/trudvsem_page.json').read_text(encoding='utf-8'))
 NOW = datetime(2026, 11, 25, 6, 0, tzinfo=timezone.utc)
 PLANT = 'inn:6609000015'
+MSK = timezone(timedelta(hours=3))
 
 
 @pytest.fixture
@@ -50,55 +51,92 @@ def cursor(api):
         return db.get(SyncStateRecord, 'trudvsem').sync_cursor
 
 
-def vacancy(number, modified, title='Наладчик оборудования', inn='6609000015', ogrn='1026600000019'):
-    """A minimal vacancy in the API shape, modified at `modified` (UTC)."""
-    item = copy.deepcopy(PAGE['results']['vacancies'][0])
-    data = item['vacancy']
-    data['id'] = f'00000000-0000-4000-8000-{number:012d}'
-    data['job-name'] = title
-    data['date_modify'] = modified.astimezone(timezone(timedelta(hours=3))).strftime('%Y-%m-%dT%H:%M:%S%z')
-    data['company'].update(inn=inn, ogrn=ogrn)
+def page_size(api, size):
+    with api.app.state.sessions() as db:
+        db.execute(text("UPDATE sources SET payload = jsonb_set(payload, '{options,pageSize}', CAST(:size AS jsonb)) WHERE id = 'trudvsem'"),
+                   {'size': str(size)})
+        db.commit()
+
+
+def modified(item, moment):
+    item['vacancy']['date_modify'] = moment.astimezone(MSK).strftime('%Y-%m-%dT%H:%M:%S%z')
     return item
 
 
+def fixture_stock(moment=NOW - timedelta(minutes=30)):
+    return [modified(copy.deepcopy(item), moment) for item in PAGE['results']['vacancies']]
+
+
+def vacancy(number, moment, title='Наладчик оборудования'):
+    """A vacancy of the fixture plant in the API shape, modified at `moment`."""
+    item = copy.deepcopy(PAGE['results']['vacancies'][0])
+    item['vacancy']['id'] = f'00000000-0000-4000-8000-{number:012d}'
+    item['vacancy']['job-name'] = title
+    return modified(item, moment)
+
+
 class FakeApi:
-    """Region endpoint: inclusive modifiedFrom/modifiedTo, newest first, offset is a page number, HTTP 500 past the cap."""
+    """Region endpoint: inclusive modifiedFrom/modifiedTo, newest first, offset is a page number, HTTP 500 past the cap.
+    `fail` maps a request number to a status (or status and headers); `fail_when` fails matching queries."""
 
     def __init__(self, vacancies, cap=10_000, fail=None):
-        self.vacancies, self.cap, self.fail, self.requests = vacancies, cap, fail or {}, []
+        self.vacancies, self.cap, self.fail, self.fail_when, self.requests = vacancies, cap, fail or {}, None, []
 
     def __call__(self, request):
         self.requests.append(request)
-        if len(self.requests) in self.fail:
-            return httpx.Response(self.fail[len(self.requests)], json={'status': '500', 'meta': {'error': 'сбой'}})
         query = params(request)
+        failure = self.fail.get(len(self.requests)) or (503 if self.fail_when and self.fail_when(query) else None)
+        if failure:
+            status, headers = failure if isinstance(failure, tuple) else (failure, None)
+            return httpx.Response(status, json={'status': str(status), 'meta': {'error': 'сбой'}}, headers=headers)
         offset, limit = int(query.get('offset', 0)), int(query.get('limit', 100))
         if (offset + 1) * limit > self.cap:
             return httpx.Response(500, json={'status': '500', 'request': {'api': 'v1'}, 'meta': {'error': 'Проверьте синтаксис запроса'}})
         low = datetime.fromisoformat(query['modifiedFrom'].replace('Z', '+00:00')) if 'modifiedFrom' in query else None
         high = datetime.fromisoformat(query['modifiedTo'].replace('Z', '+00:00')) if 'modifiedTo' in query else None
-        found = [v for v in self.vacancies
-                 if (low is None or self.modified(v) >= low) and (high is None or self.modified(v) <= high)]
+        found = [v for v in self.vacancies if (low is None or self.modified(v) >= low) and (high is None or self.modified(v) <= high)]
         found.sort(key=self.modified, reverse=True)
         chunk = found[offset * limit:(offset + 1) * limit]
-        results = {'vacancies': chunk} if chunk else {}
         return httpx.Response(200, json={'status': '200', 'request': {'api': 'v1'}, 'meta': {'total': len(found), 'limit': limit},
-                                         'results': results})
+                                         'results': {'vacancies': chunk} if chunk else {}})
 
     @staticmethod
     def modified(item):
         return datetime.strptime(item['vacancy']['date_modify'], '%Y-%m-%dT%H:%M:%S%z')
 
+    def data_requests(self):
+        return [r for r, response_total in zip(self.requests, self.totals()) if response_total]
+
+    def totals(self):
+        result = []
+        for request in self.requests:
+            query = params(request)
+            low = datetime.fromisoformat(query['modifiedFrom'].replace('Z', '+00:00'))
+            high = datetime.fromisoformat(query['modifiedTo'].replace('Z', '+00:00')) if 'modifiedTo' in query else None
+            result.append(sum(1 for v in self.vacancies if self.modified(v) >= low and (high is None or self.modified(v) <= high)))
+        return result
+
+
+def test_windows_are_geometric_and_open_above():
+    windows = trudvsem.windows_from(NOW - timedelta(days=10), NOW)
+    assert windows == [['2026-11-15T06:00:00Z', '2026-11-17T06:00:00Z'], ['2026-11-17T06:00:00Z', '2026-11-21T06:00:00Z'],
+                       ['2026-11-21T06:00:00Z', '2026-11-23T06:00:00Z'], ['2026-11-23T06:00:00Z', '2026-11-24T06:00:00Z'],
+                       ['2026-11-24T06:00:00Z', None]]
+    assert trudvsem.windows_from(NOW - timedelta(hours=7), NOW) == [['2026-11-24T23:00:00Z', None]], 'incremental: one open window'
+    first = trudvsem.windows_from(trudvsem.FLOOR, NOW)
+    assert first[0][0] == '2000-01-01T00:00:00Z' and first[-1][1] is None and len(first) == 15
+
 
 def test_first_sync_requests_region_and_normalises(database_url, pauses, clock):
-    handler = Api((200, PAGE))
+    handler = FakeApi(fixture_stock())
     with api_client(make_api(database_url, handler)) as api:
         result = run(api)
         assert result['status'] == 'ok', result
         assert (result['fetched'], result['inserted'], result['rejected']) == (5, 4, 1), 'Chelyabinsk vacancy is dropped'
-        request = handler.requests[0]
-        assert request.url.path == '/api/v1/vacancies/region/6600000000000'
-        assert params(request) == {'offset': '0', 'limit': '100', 'modifiedFrom': '2000-01-01T00:00:00Z'}, 'first run is a full export'
+        assert all(r.url.path == '/api/v1/vacancies/region/6600000000000' for r in handler.requests)
+        assert params(handler.requests[0]) == {'offset': '0', 'limit': '100', 'modifiedFrom': '2000-01-01T00:00:00Z',
+                                               'modifiedTo': '2004-06-21T06:00:00Z'}, 'first run is a full export from the floor'
+        assert params(handler.requests[-1]) == {'offset': '0', 'limit': '100', 'modifiedFrom': '2026-11-24T06:00:00Z'}
         with api.app.state.sessions() as db:
             events = {e.external_id[-4:]: e for e in db.scalars(select(EventRecord).where(EventRecord.source_id == 'trudvsem'))}
             details = {d.event_id: d for d in db.scalars(select(VacancyDetailRecord))}
@@ -111,11 +149,11 @@ def test_first_sync_requests_region_and_normalises(database_url, pauses, clock):
         assert {m['name']: m['value'] for m in plant.metrics} == {'work_places': 2, 'salary_min': 60000.0, 'salary_max': 80000.0}
         dumped = json.dumps(plant.raw, ensure_ascii=False)
         assert 'contact_person' not in plant.raw and 'contact_list' not in plant.raw and 'email' not in plant.raw['company']
-        assert 'Тестова' not in dumped and 'example.org' not in dumped.replace('plant.example.org', '') and '000-00-00' not in dumped
+        assert 'Тестова' not in dumped and 'hr.test@' not in dumped and '000-00-00' not in dumped
         assert plant.raw['company']['inn'] == '6609000015' and plant.raw['duty'].startswith('Наладка линии розлива')
         row = details[plant.id]
         assert (row.employer_key, row.title_norm, row.category, row.profile) == (PLANT, 'наладчик оборудования', 'setter', 'production')
-        assert (row.work_places, row.published_at.isoformat(), row.modified_at.isoformat()) == (2, '2026-11-20', '2026-11-24T10:15:00+03:00')
+        assert (row.work_places, row.published_at.isoformat()) == (2, '2026-11-20') and row.modified_at == NOW - timedelta(minutes=30)
         assert row.employment == 'Полная занятость' and row.specialisation == 'Производство' and row.closed_at is None
         # INN with a broken checksum is not kept or fixed: the employer is keyed by OGRN.
         broken = events['a002']
@@ -128,23 +166,29 @@ def test_first_sync_requests_region_and_normalises(database_url, pauses, clock):
         assert employers[PLANT].source_ids == ['trudvsem'] and employers[PLANT].url.startswith('https://trudvsem.ru/company/')
         # A republication from another job site with the same fingerprint is a duplicate of the employer's own vacancy.
         assert details[events['a005'].id].syndicated and details[events['a005'].id].duplicate_of == plant.id
-        assert cursor(api) == {'modified_from': '2026-11-25T05:00:00Z', 'full_sync_at': '2026-11-25T06:00:00Z'}
+        assert cursor(api) == {'modified_from': '2026-11-25T05:00:00Z', 'full_sync_at': '2026-11-25T06:00:00Z',
+                               'oldest_modified': '2026-11-25T05:30:00Z'}
 
 
 def test_resync_keeps_one_row_per_vacancy(database_url, pauses, clock):
-    changed = copy.deepcopy(PAGE)
-    changed['results']['vacancies'][0]['vacancy']['work_places'] = 5
-    handler = Api((200, PAGE), (200, PAGE), (200, changed))
+    stock = fixture_stock()
+    handler = FakeApi(stock)
     with api_client(make_api(database_url, handler)) as api:
         assert run(api)['inserted'] == 4
         clock[0] = NOW + timedelta(hours=6)
+        before = len(handler.requests)
         again = run(api)
-        assert params(handler.requests[1])['modifiedFrom'] == '2026-11-25T05:00:00Z', 'incremental from last start minus overlap'
+        assert len(handler.requests) == before + 1, 'incremental: one open window'
+        assert params(handler.requests[-1]) == {'offset': '0', 'limit': '100', 'modifiedFrom': '2026-11-25T05:00:00Z'}
         assert (again['inserted'], again['updated'], again['unchanged']) == (0, 0, 4)
         with api.app.state.sessions() as db:
             assert db.get(SyncStateRecord, 'trudvsem').snapshot_started_at is None, 'an incremental run does not start a full export'
+        stock[0]['vacancy']['work_places'] = 5
+        modified(stock[0], NOW + timedelta(hours=7))
+        clock[0] = NOW + timedelta(hours=12)
         third = run(api)
-        assert (third['inserted'], third['updated'], third['unchanged']) == (0, 1, 3)
+        assert params(handler.requests[-1])['modifiedFrom'] == '2026-11-25T11:00:00Z'
+        assert (third['inserted'], third['updated']) == (0, 1), 'only the edited vacancy is in the increment'
         with api.app.state.sessions() as db:
             assert db.scalar(text("SELECT count(*) FROM source_events WHERE source_id = 'trudvsem'")) == 4
             assert db.scalar(text('SELECT count(*) FROM vacancy_details')) == 4
@@ -154,9 +198,9 @@ def test_resync_keeps_one_row_per_vacancy(database_url, pauses, clock):
 
 
 def test_duplicate_ids_in_one_page_are_stored_once(database_url, pauses, clock):
-    page = copy.deepcopy(PAGE)
-    page['results']['vacancies'].append(copy.deepcopy(page['results']['vacancies'][1]))
-    with api_client(make_api(database_url, Api((200, page)))) as api:
+    stock = fixture_stock()
+    stock.append(copy.deepcopy(stock[1]))
+    with api_client(make_api(database_url, FakeApi(stock))) as api:
         result = run(api)
         assert result['fetched'] == 6 and result['inserted'] == 4
         with api.app.state.sessions() as db:
@@ -164,84 +208,87 @@ def test_duplicate_ids_in_one_page_are_stored_once(database_url, pauses, clock):
 
 
 def test_pages_follow_meta_total(database_url, pauses, clock):
-    stock = [vacancy(n, NOW - timedelta(minutes=n)) for n in range(1, 6)]
-    handler = FakeApi(stock)
+    handler = FakeApi([vacancy(n, NOW - timedelta(minutes=n)) for n in range(1, 6)])
     with api_client(make_api(database_url, handler)) as api:
-        with api.app.state.sessions() as db:
-            db.execute(text("UPDATE sources SET payload = jsonb_set(payload, '{options,pageSize}', '2') WHERE id = 'trudvsem'"))
-            db.commit()
+        page_size(api, 2)
         result = run(api)
         assert result['status'] == 'ok' and result['inserted'] == 5
-        assert [params(r)['offset'] for r in handler.requests] == ['0', '1', '2'] and all(params(r)['limit'] == '2' for r in handler.requests)
-        assert pauses == [0.5, 0.5], 'polite pause between pages'
+        data = handler.data_requests()
+        assert [params(r)['offset'] for r in data] == ['0', '1', '2'] and all(params(r)['limit'] == '2' for r in data)
+        assert len(pauses) == len(handler.requests) - 1 and set(pauses) == {0.5}, 'polite pause between requests'
 
 
-def test_empty_page_ends_the_window(database_url, pauses, clock):
-    empty = {'status': '200', 'request': {'api': 'v1'}, 'meta': {'total': 0, 'limit': 100}, 'results': {}}
-    handler = Api((200, empty))
+def test_empty_windows_cost_one_request_each(database_url, pauses, clock):
+    handler = Api((200, {'status': '200', 'request': {'api': 'v1'}, 'meta': {'total': 0, 'limit': 100}, 'results': {}}))
     with api_client(make_api(database_url, handler)) as api:
         result = run(api)
-        assert result['status'] == 'ok' and result['fetched'] == 0 and len(handler.requests) == 1
+        assert result['status'] == 'ok' and result['fetched'] == 0 and len(handler.requests) == 15
 
 
-def test_large_range_is_split_by_modification_time(database_url, pauses, clock, monkeypatch):
+def test_large_window_is_split_by_modification_time(database_url, pauses, clock, monkeypatch):
     # Scaled down: at most 5 records per query and windows above 4 are split, like 10 000 / 9 000 in the real API.
     monkeypatch.setattr(trudvsem, 'RECORD_CAP', 5)
     monkeypatch.setattr(trudvsem, 'WINDOW_LIMIT', 4)
-    stock = [vacancy(n, NOW - timedelta(days=n * 3)) for n in range(1, 12)]
-    handler = FakeApi(stock, cap=5)
+    handler = FakeApi([vacancy(n, NOW - timedelta(days=17, hours=n * 20)) for n in range(1, 12)], cap=5)
     with api_client(make_api(database_url, handler)) as api:
-        with api.app.state.sessions() as db:
-            db.execute(text("UPDATE sources SET payload = jsonb_set(payload, '{options,pageSize}', '2') WHERE id = 'trudvsem'"))
-            db.commit()
+        page_size(api, 2)
         result = run(api)
         assert result['status'] == 'ok', result
         assert result['inserted'] == 11, 'every vacancy is reached although one query returns at most 5'
         assert all((int(params(r)['offset']) + 1) * 2 <= 5 for r in handler.requests), 'never asks past the cap'
         windows = [(params(r)['modifiedFrom'], params(r).get('modifiedTo')) for r in handler.requests]
-        assert any(upper for _, upper in windows) and len(set(windows)) > 2, 'the range was split'
+        assert ('2026-10-24T06:00:00Z', '2026-11-01T06:00:00Z') in windows, 'the dense week was halved'
         assert windows[-1][1] is None, 'the newest window stays open and goes last'
-        assert cursor(api)['full_sync_at'] == '2026-11-25T06:00:00Z'
+
+
+def test_next_full_export_starts_below_oldest_modification(database_url, pauses, clock):
+    handler = FakeApi([vacancy(n, NOW - timedelta(days=3 * n)) for n in range(1, 4)])
+    with api_client(make_api(database_url, handler)) as api:
+        run(api)
+        assert cursor(api)['oldest_modified'] == '2026-11-16T06:00:00Z'
+        clock[0] = NOW + timedelta(days=7)
+        before = len(handler.requests)
+        run(api)
+        assert params(handler.requests[before])['modifiedFrom'] == '2026-10-17T06:00:00Z', '30 days below the oldest, not from 2000'
+        assert len(handler.requests) - before < 10
 
 
 def test_full_export_closes_missing_and_partial_does_not(database_url, pauses, clock):
     stock = [vacancy(n, NOW - timedelta(hours=n)) for n in range(1, 6)]
     handler = FakeApi(stock)
     with api_client(make_api(database_url, handler)) as api:
-        with api.app.state.sessions() as db:
-            db.execute(text("UPDATE sources SET payload = jsonb_set(payload, '{options,pageSize}', '2') WHERE id = 'trudvsem'"))
-            db.commit()
+        page_size(api, 2)
         assert run(api)['inserted'] == 5
         gone = stock.pop()  # removed from the portal
         clock[0] = NOW + timedelta(days=8)
-        second_page = len(handler.requests) + 2
-        handler.fail = {second_page: 503, second_page + 1: 503, second_page + 2: 503}
+        handler.fail_when = lambda query: query['offset'] == '1'
         failed = run(api)
-        assert failed['status'] == 'partial' and failed['inserted'] + failed['unchanged'] == 2
+        assert failed['status'] == 'partial' and failed['unchanged'] == 2 and 'HTTP 503' in failed['error']
         with api.app.state.sessions() as db:
             assert db.scalar(text('SELECT count(*) FROM vacancy_details WHERE closed_at IS NOT NULL')) == 0, 'partial export closes nothing'
-        handler.fail = {}
+        handler.fail_when = None
+        before = len(handler.requests)
         done = run(api)
-        assert done['status'] == 'ok' and params(handler.requests[-1])['offset'] == '1', 'continues the same full export'
+        assert done['status'] == 'ok' and params(handler.requests[before])['offset'] == '1', 'continues the same full export'
         with api.app.state.sessions() as db:
             closed = db.scalars(text('SELECT e.external_id FROM vacancy_details d JOIN source_events e ON e.id = d.event_id '
                                      'WHERE d.closed_at IS NOT NULL')).all()
         assert closed == [gone['vacancy']['id']], 'records seen in the interrupted run stay open'
+        listed = api.get('/api/events?source=trudvsem&limit=10').json()['items']
+        assert {e['externalId']: e['status'] for e in listed}[gone['vacancy']['id']] == 'closed'
         stock.append(gone)  # back on the portal unchanged: reopened by the next full export
         clock[0] = NOW + timedelta(days=16)
         run(api)
         with api.app.state.sessions() as db:
             assert db.scalar(text('SELECT count(*) FROM vacancy_details WHERE closed_at IS NOT NULL')) == 0
+            assert db.scalar(text("SELECT count(*) FROM source_events WHERE status = 'closed'")) == 0
 
 
 def test_page_cap_gives_partial_and_next_run_continues(database_url, pauses, clock, monkeypatch):
-    monkeypatch.setenv('TRUDVSEM_MAX_PAGES', '1')
-    stock = [vacancy(n, NOW - timedelta(minutes=n)) for n in range(1, 4)]
-    handler = FakeApi(stock)
+    monkeypatch.setenv('TRUDVSEM_MAX_PAGES', '15')  # 14 empty old windows and the first page of the newest one
+    handler = FakeApi([vacancy(n, NOW - timedelta(minutes=n)) for n in range(1, 4)])
     with api_client(make_api(database_url, handler)) as api:
-        with api.app.state.sessions() as db:
-            db.execute(text("UPDATE sources SET payload = jsonb_set(payload, '{options,pageSize}', '2') WHERE id = 'trudvsem'"))
-            db.commit()
+        page_size(api, 2)
         first = run(api)
         assert first['status'] == 'partial' and 'TRUDVSEM_MAX_PAGES' in first['error'] and first['inserted'] == 2
         assert cursor(api)['pass']['page'] == 1 and 'full_sync_at' not in cursor(api)
@@ -251,17 +298,17 @@ def test_page_cap_gives_partial_and_next_run_continues(database_url, pauses, clo
 
 
 def test_server_error_is_retried(database_url, pauses, clock):
-    handler = Api((500, {'status': '500', 'meta': {'error': 'сбой'}}), (200, PAGE))
+    handler = FakeApi(fixture_stock(), fail={1: 500})
     with api_client(make_api(database_url, handler)) as api:
         result = run(api)
-        assert result['status'] == 'ok' and result['retries'] == 1 and result['inserted'] == 4 and pauses == [1.0]
+        assert result['status'] == 'ok' and result['retries'] == 1 and result['inserted'] == 4 and pauses[0] == 1.0
 
 
 def test_rate_limit_waits_retry_after(database_url, pauses, clock):
-    handler = Api((429, 'slow down', {'Retry-After': '20'}), (200, PAGE))
+    handler = FakeApi(fixture_stock(), fail={1: (429, {'Retry-After': '20'})})
     with api_client(make_api(database_url, handler)) as api:
         result = run(api)
-        assert result['status'] == 'ok' and pauses == [20]
+        assert result['status'] == 'ok' and pauses[0] == 20
 
 
 def test_unavailable_api_is_an_error_with_backoff(database_url, pauses, clock):

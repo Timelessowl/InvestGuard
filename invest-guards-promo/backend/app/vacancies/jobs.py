@@ -1,4 +1,5 @@
 """Hiring analytics in the worker: after a vacancy sync for touched employers, once a day for everyone."""
+import hashlib
 import logging
 from datetime import datetime, timezone
 
@@ -14,6 +15,7 @@ from .store import reclassify
 log = logging.getLogger(__name__)
 LOCK_ID = 1847304
 DAILY_KEY = 'hiring_daily'
+CATEGORIES_KEY = 'vacancy_categories'
 
 
 def today():
@@ -26,7 +28,7 @@ def refresh(sessions, keys=None, as_of=None, trigger='schedule'):
     as_of = as_of or today()
     rules, book = signals.load_rules(), load_book()
     with sessions() as db:
-        reclassified = reclassify(db, book) if keys is None else 0
+        reclassified = apply_dictionary(db, book) if keys is None else 0
         views = aggregates.build_views(db, as_of, rules, book, keys)
         aggregates.update_exclusions(views)
         aggregates.write_snapshots(db, views)
@@ -40,6 +42,20 @@ def refresh(sessions, keys=None, as_of=None, trigger='schedule'):
         run = push_events(db, SIGNAL_SOURCE, items, trigger)
         record_run(db, run)
     return {**result, 'stored': run['status'] == 'ok', 'run': run}
+
+
+def apply_dictionary(db, book):
+    """New vacancies are classified on write; stored ones only when the dictionary file changed."""
+    digest = hashlib.sha256(book.model_dump_json().encode()).hexdigest()
+    record = db.get(MetadataRecord, CATEGORIES_KEY)
+    if record and record.payload.get('digest') == digest:
+        return 0
+    changed = reclassify(db, book)
+    if record:
+        record.payload = {'digest': digest, 'version': book.version}
+    else:
+        db.add(MetadataRecord(key=CATEGORIES_KEY, payload={'digest': digest, 'version': book.version}))
+    return changed
 
 
 def record_run(db, run):

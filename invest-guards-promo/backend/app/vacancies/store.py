@@ -80,13 +80,20 @@ def close_missing(db, source_id, started_at):
     """After a complete full export: vacancies not seen since it started are closed, closed ones seen again reopen.
     Returns (closed, reopened); the caller commits."""
     params = {'source': source_id, 'started': started_at}
-    closed = db.execute(text(
+    closed = list(db.scalars(text(
         'UPDATE vacancy_details d SET closed_at = now(), updated_at = now() FROM source_events e '
-        'WHERE e.id = d.event_id AND d.source_id = :source AND d.closed_at IS NULL AND e.last_seen_at < :started'), params).rowcount
-    reopened = db.execute(text(
+        'WHERE e.id = d.event_id AND d.source_id = :source AND d.closed_at IS NULL AND e.last_seen_at < :started '
+        'RETURNING d.event_id'), params))
+    reopened = list(db.scalars(text(
         'UPDATE vacancy_details d SET closed_at = NULL, updated_at = now() FROM source_events e '
-        'WHERE e.id = d.event_id AND d.source_id = :source AND d.closed_at IS NOT NULL AND e.last_seen_at >= :started'), params).rowcount
-    return closed, reopened
+        'WHERE e.id = d.event_id AND d.source_id = :source AND d.closed_at IS NOT NULL AND e.last_seen_at >= :started '
+        'RETURNING d.event_id'), params))
+    # Shown in the events API; the source never sends a status, so the next update of the vacancy clears it.
+    if closed:
+        db.execute(text("UPDATE source_events SET status = 'closed' WHERE id = ANY(:ids)"), {'ids': closed})
+    if reopened:
+        db.execute(text("UPDATE source_events SET status = NULL WHERE id = ANY(:ids) AND status = 'closed'"), {'ids': reopened})
+    return len(closed), len(reopened)
 
 
 def reclassify(db, book=None):
