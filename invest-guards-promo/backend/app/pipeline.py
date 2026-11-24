@@ -70,11 +70,15 @@ SCORE_PROMPT = (
 INN_RE = re.compile(r'\bИНН\D{0,5}(\d{12}|\d{10})\b')
 
 
-def find_inn(*texts):
+def find_inn(model_inn, *texts):
+    """INN from the text; the model's answer counts only when the text contains it."""
+    model_inn = (model_inn or '').strip()
+    if valid_inn(model_inn) and any(re.search(rf'(?<!\d){model_inn}(?!\d)', value or '') for value in texts):
+        return model_inn
     for value in texts:
-        for candidate in [value] + INN_RE.findall(value or ''):
-            if valid_inn((candidate or '').strip()):
-                return candidate.strip()
+        for candidate in INN_RE.findall(value or ''):
+            if valid_inn(candidate):
+                return candidate
     return None
 
 
