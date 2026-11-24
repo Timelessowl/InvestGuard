@@ -179,6 +179,7 @@ def test_indicators_on_fixed_dates(sessions):
     assert (summary['active'], summary['activeWorkPlaces'], summary['new30d'], summary['new90d']) == (6, 8, 3, 6)
     assert (summary['production'], summary['engineering'], summary['management']) == (3, 1, 1)
     assert summary['municipalities'] == ['Екатеринбург', 'Первоуральск'] and summary['newMunicipalities'] == ['Екатеринбург']
+    assert summary['newMunicipalityVacancies'] == 1 and summary['newMunicipalityCounts'] == {'Екатеринбург': 1}
     assert summary['categories'] == {'engineer': 1, 'production_head': 1, 'worker': 3}
     assert summary['dynamics30d'] == {'days': 30, 'previous': 4, 'current': 6, 'delta': 2, 'ratio': 1.5, 'reason': None}
     assert summary['dynamics90d']['ratio'] is None and 'нет снимка' in summary['dynamics90d']['reason']
@@ -187,6 +188,34 @@ def test_indicators_on_fixed_dates(sessions):
         db.commit()
         saved = db.get(VacancySnapshotRecord, (key, AS_OF))
     assert (saved.active_count, saved.new_30d, saved.new_90d, saved.management_count) == (6, 3, 6, 1)
+    assert (saved.new_municipalities, saved.new_municipality_vacancies) == (['Екатеринбург'], 1)
+
+
+def test_copy_of_a_closed_vacancy_is_counted(sessions):
+    """A republication that appears after the original closed heads the copies: it is open, so it is counted."""
+    original = add(sessions, PLANT, 'Слесарь', ago(20), closed=ago(5))
+    republished = add(sessions, PLANT, 'Слесарь', ago(10), syndicated=True)
+    with sessions() as db:
+        pointers = dict(db.execute(text('SELECT event_id, duplicate_of FROM vacancy_details')).all())
+    assert pointers == {original: republished, republished: None}
+    view = views(sessions)[f'inn:{PLANT}']
+    assert view.summary()['active'] == 1 and [r.event_id for r in view.rows] == [republished]
+
+
+def test_closing_regroups_copies(sessions):
+    """close_missing marks on the first miss, closes on the second and hands the group to the earliest open copy."""
+    first = add(sessions, PLANT, 'Слесарь', ago(20))
+    second = add(sessions, PLANT, 'Слесарь', ago(15), syndicated=True)
+    with sessions() as db:
+        assert db.scalar(text('SELECT duplicate_of FROM vacancy_details WHERE event_id = :id'), {'id': second}) == first
+        db.execute(text("UPDATE source_events SET last_seen_at = now() - interval '20 days' WHERE id = :id"), {'id': first})
+        assert store.close_missing(db, 'trudvsem', datetime.now(TZ) - timedelta(days=10)) == (0, 0, 1)
+        db.execute(text("UPDATE source_events SET last_seen_at = now() + interval '1 hour' WHERE id = :id"), {'id': second})
+        assert store.close_missing(db, 'trudvsem', datetime.now(TZ)) == (1, 0, 0)
+        pointers = dict(db.execute(text('SELECT event_id, duplicate_of FROM vacancy_details')).all())
+        db.commit()
+    assert pointers == {first: second, second: None}
+    assert [r.event_id for r in views(sessions)[f'inn:{PLANT}'].active] == [second]
 
 
 def test_first_export_is_not_a_hiring_surge(sessions):
@@ -199,6 +228,7 @@ def test_first_export_is_not_a_hiring_surge(sessions):
     assert not view.has_history and summary['active'] == 20 and summary['new30d'] == 0
     assert summary['dynamics30d'] == {'days': 30, 'ratio': None, 'delta': None, 'reason': aggregates.NO_HISTORY}
     assert summary['newMunicipalities'] is None, 'absence before observation cannot be asserted'
+    assert summary['newMunicipalityVacancies'] is None and view.snapshot_values()['new_municipality_vacancies'] is None
     assert found(view) == {}
 
 
@@ -257,6 +287,8 @@ def test_new_municipality_and_production_launch(sessions):
     result = views(sessions)
     plant = found(result[f'inn:{PLANT}'])
     assert result[f'inn:{PLANT}'].new_municipalities() == ['Березовский', 'Ревда']
+    assert result[f'inn:{PLANT}'].new_municipality_counts() == {'Березовский': 2, 'Ревда': 1}
+    assert result[f'inn:{PLANT}'].summary()['newMunicipalityVacancies'] == 3, 'one vacancy in Ревда is counted, no signal'
     place = plant[('vacancy_new_municipality', 'Березовский')]
     assert place.value == 2 and place.start == ago(10)
     assert ('vacancy_new_municipality', 'Ревда') not in plant, 'one vacancy is below minVacancies'
