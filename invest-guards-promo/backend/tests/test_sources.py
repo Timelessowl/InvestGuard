@@ -92,3 +92,11 @@ def test_broken_item_does_not_drop_feed():
            '<item><title>Битая & запись</title><link>https://u.ru/2</link></item>'
            '<item><title>Третья</title><link>https://u.ru/3</link></item></channel></rss>')
     assert [i['url'] for i in parse_feed(xml)] == ['https://u.ru/1', 'https://u.ru/3']
+
+
+def test_model_inn_must_appear_in_text():
+    from app.pipeline import find_inn
+    assert find_inn(INN, 'Завод в Ревде', 'ИНН не указан') is None, 'выдуманный моделью ИНН не принимается'
+    assert find_inn(INN, 'Завод', f'Инициатор — АО «Завод» ({INN})') == INN
+    assert find_inn('', 'Завод', f'ИНН {INN}') == INN
+    assert find_inn('6661005708', f'ИНН 6661005708') is None
