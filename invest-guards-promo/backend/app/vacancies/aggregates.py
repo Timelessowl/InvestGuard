@@ -147,17 +147,27 @@ class EmployerView:
                 result.append(place)
         return result
 
+    def new_municipality_counts(self):
+        """Active vacancies of the rule profiles per new municipality; None while history is short."""
+        places = self.new_municipalities()
+        if places is None:
+            return None
+        rows = self.active_with(self.rules.newMunicipality.profiles)
+        return {place: sum(r.municipality == place for r in rows) for place in places}
+
     def categories(self):
         return dict(sorted(Counter(r.category for r in self.active if r.category).items()))
 
     def snapshot_values(self):
         new_30 = self.published_in(30)
+        counts = self.new_municipality_counts()
         return {'active_count': len(self.active), 'active_work_places': sum(r.places for r in self.active),
                 'new_30d': len(new_30), 'new_30d_work_places': sum(r.places for r in new_30), 'new_90d': len(self.published_in(90)),
                 'production_count': len(self.active_with(('production',))), 'engineering_count': len(self.active_with(('engineering',))),
                 'management_count': len(self.active_with(MANAGEMENT)),
                 'municipalities': sorted({r.municipality for r in self.active if r.municipality}),
-                'new_municipalities': self.new_municipalities(), 'categories': self.categories()}
+                'new_municipalities': list(counts) if counts is not None else None,
+                'new_municipality_vacancies': sum(counts.values()) if counts is not None else None, 'categories': self.categories()}
 
     def summary(self):
         """Indicators for the signal raw and the API."""
@@ -167,7 +177,8 @@ class EmployerView:
                 'new30dWorkPlaces': values['new_30d_work_places'], 'new90d': values['new_90d'],
                 'production': values['production_count'], 'engineering': values['engineering_count'],
                 'management': values['management_count'], 'municipalities': values['municipalities'],
-                'newMunicipalities': values['new_municipalities'], 'categories': values['categories'],
+                'newMunicipalities': values['new_municipalities'], 'newMunicipalityVacancies': values['new_municipality_vacancies'],
+                'newMunicipalityCounts': self.new_municipality_counts(), 'categories': values['categories'],
                 'dynamics30d': self.dynamics(30), 'dynamics90d': self.dynamics(90), 'excludedReason': self.employer.excluded_reason}
 
 

@@ -192,6 +192,7 @@ class VacancyDetailRecord(Base):
     modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text('now()'))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    missing_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text('now()'))
     fingerprint: Mapped[str] = mapped_column(Text)
     duplicate_of: Mapped[int | None] = mapped_column(BigInteger, ForeignKey('vacancy_details.event_id'))
@@ -211,6 +212,7 @@ class VacancySnapshotRecord(Base):
     management_count: Mapped[int] = mapped_column(Integer)
     municipalities: Mapped[list] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
     new_municipalities: Mapped[list | None] = mapped_column(ARRAY(Text))
+    new_municipality_vacancies: Mapped[int | None] = mapped_column(Integer)
     categories: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
 
 

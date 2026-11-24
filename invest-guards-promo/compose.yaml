@@ -107,12 +107,10 @@ services:
       start_period: 20s
       retries: 3
 
-  # API sources (long paginated exports) run here, so they do not delay RSS collection and AI processing.
-  # No API adapter is connected yet: opt in with `docker compose --profile events up -d`.
+  # API sources (long paginated exports) and hiring analytics run here, so they do not delay RSS collection and AI processing.
   collector:
     image: invest-signal-backend:local
     init: true
-    profiles: ["events"]
     command: ["python", "-m", "app.worker"]
     environment:
       <<: *backend-env

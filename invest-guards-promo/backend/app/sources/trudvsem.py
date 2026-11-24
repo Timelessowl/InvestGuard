@@ -83,6 +83,13 @@ def source_day(value):
         return None
 
 
+def newest_modified(items, limit):
+    """Latest date_modify of the page not after `limit`: a future one is a source error, not the data front."""
+    found = [source_moment(entry['vacancy'].get('date_modify')) for entry in items
+             if isinstance(entry, dict) and isinstance(entry.get('vacancy'), dict)]
+    return max((m for m in found if m and m.tzinfo and m <= limit), default=None)
+
+
 def windows_from(lower, now):
     """Windows oldest first, open above: wide where old vacancies are sparse, one, two, four… days near now where most are.
     Bounds are inclusive, so a boundary second is read twice (upsert keeps one)."""
@@ -161,18 +168,29 @@ class TrudvsemAdapter(SourceAdapter):
         done = cursor.get('full_sync_at')
         return not cursor.get('modified_from') or not done or now - moment(done) >= timedelta(days=self.full_days)
 
+    def next_from(self, state, current):
+        """Next increment starts at the latest date_modify received minus the overlap, not at the pass start: the API
+        publishes changes in batches about 12 hours late (checked 25.11.2026). A pass that received nothing keeps it."""
+        previous = state.get('modified_from')
+        if not current.get('newest'):
+            return previous or current.get('from') or stamp(FLOOR)
+        bound = moment(current['newest']) - self.overlap
+        if current['mode'] == 'incremental' and previous:
+            bound = max(bound, moment(previous))
+        return stamp(bound)
+
     def fetch(self, cursor):
-        """One pass: full (weekly, from below the oldest modification) or incremental (from the last pass start minus the
-        overlap). Windows go
-        oldest first, the open newest one last, so a vacancy edited during the pass is still met. Position is in the cursor:
-        a failed or capped run continues the same pass."""
+        """One pass: full (weekly, from below the oldest modification) or incremental (from the latest received
+        modification minus the overlap). Windows go oldest first, the open newest one last, so a vacancy edited during
+        the pass is still met. Position is in the cursor: a failed or capped run continues the same pass."""
         state = copy.deepcopy(cursor or {})
         now = clock()
         current = state.get('pass')
         if not current:
             full = self.full_due(state, now)
             lower = self.full_floor(state) if full else moment(state['modified_from'])
-            current = {'mode': 'full' if full else 'incremental', 'startedAt': stamp(now), 'windows': windows_from(lower, now), 'page': 0}
+            current = {'mode': 'full' if full else 'incremental', 'startedAt': stamp(now), 'from': stamp(lower),
+                       'windows': windows_from(lower, now), 'page': 0}
         requests = 0
         while current['windows']:
             if requests >= self.max_pages:
@@ -194,6 +212,9 @@ class TrudvsemAdapter(SourceAdapter):
             oldest = min((e.details['modified_at'] for e in events if e.details.get('modified_at')), default=None)
             if oldest and (not current.get('oldest') or oldest < moment(current['oldest'])):
                 current['oldest'] = stamp(oldest)
+            newest = newest_modified(items, moment(current['startedAt']))
+            if newest and (not current.get('newest') or newest > moment(current['newest'])):
+                current['newest'] = stamp(newest)
             if not items or (page + 1) * self.page_size >= min(total, RECORD_CAP):
                 current['windows'].pop(0)
                 current['page'] = 0
@@ -202,7 +223,7 @@ class TrudvsemAdapter(SourceAdapter):
             done = not current['windows']
             if done:
                 state.pop('pass', None)
-                state['modified_from'] = stamp(moment(current['startedAt']) - self.overlap)
+                state['modified_from'] = self.next_from(state, current)
                 if current['mode'] == 'full':
                     state['full_sync_at'] = current['startedAt']
                     if current.get('oldest'):
@@ -269,5 +290,5 @@ class TrudvsemAdapter(SourceAdapter):
         return raw
 
     def snapshot_finished(self, db, started_at):
-        closed, reopened = store.close_missing(db, self.source['id'], started_at)
-        log.info('trudvsem full export: %s vacancies closed, %s reopened', closed, reopened)
+        closed, reopened, marked = store.close_missing(db, self.source['id'], started_at)
+        log.info('trudvsem full export: %s vacancies closed, %s reopened, %s missing for the first time', closed, reopened, marked)

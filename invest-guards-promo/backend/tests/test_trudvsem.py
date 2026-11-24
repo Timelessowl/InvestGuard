@@ -2,6 +2,7 @@
 full reconciliation, errors. The fixture is synthetic and carries contact fields only to prove they are dropped."""
 import copy
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -13,6 +14,7 @@ from sqlalchemy import select, text
 from app.database import EventRecord, EventVersionRecord, SyncStateRecord, VacancyDetailRecord, VacancyEmployerRecord
 from app.sources import base, trudvsem
 from app.sources.runner import sync_source
+from app.vacancies import aggregates, jobs
 from conftest import api_client
 from fakes import Api
 from test_source_runner import make_api
@@ -77,10 +79,12 @@ def vacancy(number, moment, title='Наладчик оборудования'):
 
 class FakeApi:
     """Region endpoint: inclusive modifiedFrom/modifiedTo, newest first, offset is a page number, HTTP 500 past the cap.
-    `fail` maps a request number to a status (or status and headers); `fail_when` fails matching queries."""
+    `fail` maps a request number to a status (or status and headers); `fail_when` fails matching queries.
+    `hidden` holds ids not published yet (the real API lags); `after(query, chunk)` runs after a page is served."""
 
     def __init__(self, vacancies, cap=10_000, fail=None):
         self.vacancies, self.cap, self.fail, self.fail_when, self.requests = vacancies, cap, fail or {}, None, []
+        self.hidden, self.after, self.served = set(), None, []
 
     def __call__(self, request):
         self.requests.append(request)
@@ -94,11 +98,18 @@ class FakeApi:
             return httpx.Response(500, json={'status': '500', 'request': {'api': 'v1'}, 'meta': {'error': 'Проверьте синтаксис запроса'}})
         low = datetime.fromisoformat(query['modifiedFrom'].replace('Z', '+00:00')) if 'modifiedFrom' in query else None
         high = datetime.fromisoformat(query['modifiedTo'].replace('Z', '+00:00')) if 'modifiedTo' in query else None
-        found = [v for v in self.vacancies if (low is None or self.modified(v) >= low) and (high is None or self.modified(v) <= high)]
+        found = [v for v in self.published() if (low is None or self.modified(v) >= low) and (high is None or self.modified(v) <= high)]
         found.sort(key=self.modified, reverse=True)
         chunk = found[offset * limit:(offset + 1) * limit]
-        return httpx.Response(200, json={'status': '200', 'request': {'api': 'v1'}, 'meta': {'total': len(found), 'limit': limit},
-                                         'results': {'vacancies': chunk} if chunk else {}})
+        self.served.extend(v['vacancy']['id'] for v in chunk)
+        response = httpx.Response(200, json={'status': '200', 'request': {'api': 'v1'}, 'meta': {'total': len(found), 'limit': limit},
+                                             'results': {'vacancies': chunk} if chunk else {}})
+        if self.after:
+            self.after(query, chunk)
+        return response
+
+    def published(self):
+        return [v for v in self.vacancies if v['vacancy']['id'] not in self.hidden]
 
     @staticmethod
     def modified(item):
@@ -113,7 +124,7 @@ class FakeApi:
             query = params(request)
             low = datetime.fromisoformat(query['modifiedFrom'].replace('Z', '+00:00'))
             high = datetime.fromisoformat(query['modifiedTo'].replace('Z', '+00:00')) if 'modifiedTo' in query else None
-            result.append(sum(1 for v in self.vacancies if self.modified(v) >= low and (high is None or self.modified(v) <= high)))
+            result.append(sum(1 for v in self.published() if self.modified(v) >= low and (high is None or self.modified(v) <= high)))
         return result
 
 
@@ -166,7 +177,8 @@ def test_first_sync_requests_region_and_normalises(database_url, pauses, clock):
         assert employers[PLANT].source_ids == ['trudvsem'] and employers[PLANT].url.startswith('https://trudvsem.ru/company/')
         # A republication from another job site with the same fingerprint is a duplicate of the employer's own vacancy.
         assert details[events['a005'].id].syndicated and details[events['a005'].id].duplicate_of == plant.id
-        assert cursor(api) == {'modified_from': '2026-11-25T05:00:00Z', 'full_sync_at': '2026-11-25T06:00:00Z',
+        # The next increment starts from the latest change received, not from the clock.
+        assert cursor(api) == {'modified_from': '2026-11-25T04:30:00Z', 'full_sync_at': '2026-11-25T06:00:00Z',
                                'oldest_modified': '2026-11-25T05:30:00Z'}
 
 
@@ -179,22 +191,48 @@ def test_resync_keeps_one_row_per_vacancy(database_url, pauses, clock):
         before = len(handler.requests)
         again = run(api)
         assert len(handler.requests) == before + 1, 'incremental: one open window'
-        assert params(handler.requests[-1]) == {'offset': '0', 'limit': '100', 'modifiedFrom': '2026-11-25T05:00:00Z'}
+        assert params(handler.requests[-1]) == {'offset': '0', 'limit': '100', 'modifiedFrom': '2026-11-25T04:30:00Z'}
         assert (again['inserted'], again['updated'], again['unchanged']) == (0, 0, 4)
+        assert cursor(api)['modified_from'] == '2026-11-25T04:30:00Z', 'nothing newer received: the bound stays'
         with api.app.state.sessions() as db:
             assert db.get(SyncStateRecord, 'trudvsem').snapshot_started_at is None, 'an incremental run does not start a full export'
         stock[0]['vacancy']['work_places'] = 5
         modified(stock[0], NOW + timedelta(hours=7))
         clock[0] = NOW + timedelta(hours=12)
         third = run(api)
-        assert params(handler.requests[-1])['modifiedFrom'] == '2026-11-25T11:00:00Z'
-        assert (third['inserted'], third['updated']) == (0, 1), 'only the edited vacancy is in the increment'
+        assert params(handler.requests[-1])['modifiedFrom'] == '2026-11-25T04:30:00Z'
+        assert (third['inserted'], third['updated']) == (0, 1), 'only the edited vacancy changed'
+        assert cursor(api)['modified_from'] == '2026-11-25T12:00:00Z'
         with api.app.state.sessions() as db:
             assert db.scalar(text("SELECT count(*) FROM source_events WHERE source_id = 'trudvsem'")) == 4
             assert db.scalar(text('SELECT count(*) FROM vacancy_details')) == 4
             assert db.scalar(text('SELECT work_places FROM vacancy_details d JOIN source_events e ON e.id = d.event_id '
                                   "WHERE e.external_id LIKE '%a001'")) == 5
             assert len(list(db.scalars(select(EventVersionRecord)))) == 1
+
+
+def test_increment_follows_received_changes_not_the_clock(database_url, pauses, clock):
+    """The API publishes changes in batches about 12 hours late. Runs that find nothing new keep the bound, so the
+    batch published later is still read, however many runs passed meanwhile."""
+    early = [vacancy(n, NOW - timedelta(hours=18, minutes=n)) for n in (1, 2)]  # 24.11 11:59 and 11:58 UTC
+    late = [vacancy(n, NOW - timedelta(hours=13 - n)) for n in (3, 4)]  # 24.11 20:00 and 21:00 UTC, not published yet
+    broken = vacancy(9, NOW + timedelta(days=30))  # a future date_modify does not move the bound
+    handler = FakeApi(early + late + [broken])
+    handler.hidden = {v['vacancy']['id'] for v in late}
+    with api_client(make_api(database_url, handler)) as api:
+        assert run(api)['inserted'] == 3
+        assert cursor(api)['modified_from'] == '2026-11-24T10:59:00Z'
+        for hours in (6, 12, 18):
+            clock[0] = NOW + timedelta(hours=hours)
+            before = len(handler.requests)
+            assert run(api)['inserted'] == 0
+            assert params(handler.requests[before])['modifiedFrom'] == '2026-11-24T10:59:00Z'
+            assert cursor(api)['modified_from'] == '2026-11-24T10:59:00Z', f'no new data at +{hours} h: the bound stays'
+        handler.hidden = set()  # the delayed batch is published
+        clock[0] = NOW + timedelta(hours=24)
+        result = run(api)
+        assert result['inserted'] == 2, 'changes made between the batches are not lost'
+        assert cursor(api)['modified_from'] == '2026-11-24T20:00:00Z'
 
 
 def test_duplicate_ids_in_one_page_are_stored_once(database_url, pauses, clock):
@@ -253,6 +291,18 @@ def test_next_full_export_starts_below_oldest_modification(database_url, pauses,
         assert len(handler.requests) - before < 10
 
 
+def closed_ids(api):
+    with api.app.state.sessions() as db:
+        return db.scalars(text('SELECT e.external_id FROM vacancy_details d JOIN source_events e ON e.id = d.event_id '
+                               'WHERE d.closed_at IS NOT NULL ORDER BY 1')).all()
+
+
+def missing_ids(api):
+    with api.app.state.sessions() as db:
+        return db.scalars(text('SELECT e.external_id FROM vacancy_details d JOIN source_events e ON e.id = d.event_id '
+                               'WHERE d.missing_since IS NOT NULL ORDER BY 1')).all()
+
+
 def test_full_export_closes_missing_and_partial_does_not(database_url, pauses, clock):
     stock = [vacancy(n, NOW - timedelta(hours=n)) for n in range(1, 6)]
     handler = FakeApi(stock)
@@ -264,24 +314,82 @@ def test_full_export_closes_missing_and_partial_does_not(database_url, pauses, c
         handler.fail_when = lambda query: query['offset'] == '1'
         failed = run(api)
         assert failed['status'] == 'partial' and failed['unchanged'] == 2 and 'HTTP 503' in failed['error']
-        with api.app.state.sessions() as db:
-            assert db.scalar(text('SELECT count(*) FROM vacancy_details WHERE closed_at IS NOT NULL')) == 0, 'partial export closes nothing'
+        assert closed_ids(api) == [] and missing_ids(api) == [], 'partial export neither marks nor closes'
         handler.fail_when = None
         before = len(handler.requests)
         done = run(api)
         assert done['status'] == 'ok' and params(handler.requests[before])['offset'] == '1', 'continues the same full export'
-        with api.app.state.sessions() as db:
-            closed = db.scalars(text('SELECT e.external_id FROM vacancy_details d JOIN source_events e ON e.id = d.event_id '
-                                     'WHERE d.closed_at IS NOT NULL')).all()
-        assert closed == [gone['vacancy']['id']], 'records seen in the interrupted run stay open'
+        assert missing_ids(api) == [gone['vacancy']['id']], 'records seen in the interrupted run are not missing'
+        assert closed_ids(api) == [], 'one miss only marks'
+        clock[0] = NOW + timedelta(days=16)
+        run(api)
+        assert closed_ids(api) == [gone['vacancy']['id']] and missing_ids(api) == [], 'missing from two full exports in a row'
         listed = api.get('/api/events?source=trudvsem&limit=10').json()['items']
         assert {e['externalId']: e['status'] for e in listed}[gone['vacancy']['id']] == 'closed'
         stock.append(gone)  # back on the portal unchanged: reopened by the next full export
+        clock[0] = NOW + timedelta(days=24)
+        run(api)
+        assert closed_ids(api) == []
+        with api.app.state.sessions() as db:
+            assert db.scalar(text("SELECT count(*) FROM source_events WHERE status = 'closed'")) == 0
+
+
+def test_page_shift_during_full_export_does_not_close(database_url, pauses, clock):
+    """Offset paging skips a record when an already read one leaves the window: one miss marks, it does not close."""
+    stock = [vacancy(n, NOW - timedelta(days=3, hours=n)) for n in range(1, 6)]
+    handler = FakeApi(stock)
+    with api_client(make_api(database_url, handler)) as api:
+        page_size(api, 2)
+        assert run(api)['inserted'] == 5
+        gone = stock.pop()  # really removed from the portal
+        moved, skipped = stock[0], stock[2]
+        shifted = []
+
+        def edit_read_vacancy(query, chunk):
+            # The first read vacancy is edited after its page: it leaves the window, the rest move up by one.
+            if not shifted and chunk and chunk[0] is moved:
+                shifted.append(modified(moved, NOW + timedelta(days=8, minutes=-10)))
+
+        handler.after = edit_read_vacancy
+        clock[0] = NOW + timedelta(days=8)
+        before = len(handler.served)
+        assert run(api)['status'] == 'ok' and shifted
+        assert skipped['vacancy']['id'] not in handler.served[before:], 'the paging really skipped it'
+        assert missing_ids(api) == sorted([skipped['vacancy']['id'], gone['vacancy']['id']]) and closed_ids(api) == []
         clock[0] = NOW + timedelta(days=16)
         run(api)
-        with api.app.state.sessions() as db:
-            assert db.scalar(text('SELECT count(*) FROM vacancy_details WHERE closed_at IS NOT NULL')) == 0
-            assert db.scalar(text("SELECT count(*) FROM source_events WHERE status = 'closed'")) == 0
+        assert closed_ids(api) == [gone['vacancy']['id']], 'only the vacancy missing twice is closed'
+        assert missing_ids(api) == [], 'the skipped one was seen again'
+
+
+def test_open_copy_is_counted_when_the_original_closes(database_url, pauses, clock):
+    """a005 republishes a001. When a001 leaves the portal, a005 heads the copies and stays in the indicators."""
+    stock = fixture_stock()
+    original = next(v for v in stock if v['vacancy']['id'].endswith('a001'))
+    with api_client(make_api(database_url, FakeApi(stock))) as api:
+        run(api)
+        stock.remove(original)
+        for days in (8, 16):
+            clock[0] = NOW + timedelta(days=days)
+            run(api)
+
+        def state():
+            with api.app.state.sessions() as db:
+                rows = db.execute(text('SELECT right(e.external_id, 4), d.event_id, d.duplicate_of, d.closed_at IS NULL '
+                                       'FROM vacancy_details d JOIN source_events e ON e.id = d.event_id')).all()
+                active = {r.event_id for r in aggregates.load_rows(db, jobs.today())[PLANT] if r.closed_at is None}
+            return {suffix: (event_id, duplicate_of, is_open) for suffix, event_id, duplicate_of, is_open in rows}, active
+
+        rows, active = state()
+        copy_id = rows['a005'][0]
+        assert rows['a001'] == (rows['a001'][0], copy_id, False) and rows['a005'] == (copy_id, None, True)
+        assert copy_id in active, 'the open copy is not hidden behind the closed original'
+        stock.append(original)  # back on the portal: the original heads the copies again
+        clock[0] = NOW + timedelta(days=24)
+        run(api)
+        rows, active = state()
+        assert rows['a001'] == (rows['a001'][0], None, True) and rows['a005'][1] == rows['a001'][0]
+        assert rows['a001'][0] in active and copy_id not in active, 'counted once'
 
 
 def test_page_cap_gives_partial_and_next_run_continues(database_url, pauses, clock, monkeypatch):
@@ -349,3 +457,14 @@ def test_wrong_region_setting_is_not_configured(database_url, pauses, clock, mon
     with api_client(make_api(database_url, handler)) as api:
         result = run(api)
         assert result['status'] == 'not_configured' and 'TRUDVSEM_REGION_CODE' in result['error'] and not handler.requests
+
+
+def test_collector_runs_by_default():
+    """The default stack collects «Работа России»: the collector service is not behind an opt-in profile."""
+    compose = Path(__file__).resolve().parents[2] / 'compose.yaml'
+    if not compose.exists():
+        pytest.skip('compose.yaml is outside the image')
+    content = compose.read_text(encoding='utf-8')
+    block = content[content.index('\n  collector:'):]
+    block = block[:re.search(r'\n  [a-z]+:\n', block[1:]).start() + 1]
+    assert 'profiles:' not in block and re.search(r'SOURCE_KINDS: .*\btrudvsem\b', block)
