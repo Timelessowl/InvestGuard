@@ -168,6 +168,7 @@ def test_first_sync_requests_region_and_normalises(database_url, pauses, clock):
         assert row.employment == 'Полная занятость' and row.specialisation == 'Производство' and row.closed_at is None
         # INN with a broken checksum is not kept or fixed: the employer is keyed by OGRN.
         broken = events['a002']
+        assert 'site' not in broken.raw['company'] and plant.raw['company']['site'] == 'https://plant.example.org'
         assert broken.inn is None and details[broken.id].employer_key == 'ogrn:1026600000020'
         assert broken.municipality == 'Реж' and '[телефон]' in broken.address
         # No INN and no OGRN: the source employer id is the key, nothing is invented.
