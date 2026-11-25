@@ -9,6 +9,7 @@ import copy
 import logging
 import math
 import os
+import re
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -25,7 +26,7 @@ FLOOR_MARGIN = timedelta(days=30)
 RECORD_CAP = 10_000  # documented per-query limit
 WINDOW_LIMIT = 9_000  # split earlier: the open newest window grows while it is paged
 SYNDICATED = 'Вакансия интернет ресурса'
-# Whitelist for raw: no contact_person, contact_list or company e-mail.
+# Whitelist for raw: no contact_person, contact_list or company e-mail; company.site is scrubbed in raw().
 RAW_FIELDS = ('id', 'source', 'region.region_code', 'region.name', 'creation-date', 'date_modify', 'job-name', 'vac_url', 'salary',
               'salary_min', 'salary_max', 'currency', 'schedule', 'employment', 'work_places', 'code_profession', 'typicalPosition',
               'category.specialisation', 'qualification', 'requirement.education', 'requirement.experience', 'conditions', 'term',
@@ -279,6 +280,15 @@ class TrudvsemAdapter(SourceAdapter):
 
     def raw(self, data):
         raw = keep_fields(data, RAW_FIELDS)
+        company = raw.get('company')
+        if isinstance(company, dict) and company.get('site'):
+            # Employers often put an HR e-mail or phone into the site field.
+            site = re.sub(r'\[(e-mail|телефон)\]', '', scrub_contacts(company['site'], 300)).strip(' ,;.')
+            site = site.removeprefix('тел').strip(' ,;.:')
+            if site:
+                company['site'] = site
+            else:
+                company.pop('site')
         for name in ('duty', 'requirements'):
             text = scrub_contacts(data.get(name), TEXT_LIMIT)
             if text:
