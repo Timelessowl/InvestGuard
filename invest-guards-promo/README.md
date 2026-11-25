@@ -22,6 +22,7 @@ docker compose up -d --build --wait
 | `worker` | Тот же образ, `python -m app.worker`: сбор RSS по расписанию и разбор документов |
 | `db` | PostgreSQL 17; данные в томе `postgres_data` |
 | `dzen` | По желанию: сбор Дзена в headless-браузере, образ `backend/Dockerfile.dzen` на базе Playwright. Включается так: `docker compose --profile dzen up -d --build` |
+| `umami`, `events-db`, `umami-init` | По желанию: продуктовая аналитика (Umami) со своей базой событий, см. [Продуктовая аналитика](#продуктовая-аналитика-umami). Включается так: `docker compose --profile analytics up -d --build` |
 
 Наружу опубликован только порт frontend. Порт меняется через `APP_PORT`. Без `LLM_API_KEY` воркер только собирает документы, а чат и разбор отвечают «ИИ не настроен». Без `FOCUS_API_KEY` блок проверки инициатора сообщает, что Контур.Фокус не настроен.
 
@@ -131,12 +132,59 @@ RSS-ленты, поиск Дзена ──► documents (new)
 
 `POST /api/chat` получает историю диалога и крутит цикл tool calling (до 6 шагов) на GigaChat-3-Pro. Инструменты: `search_candidates`, `get_candidate`, `update_candidate`, `create_signal`, `search_documents`, `pipeline_status`, `collect_sources`, `process_documents` (не больше 10 документов за раз), `check_company` (проверка инициатора в Контур.Фокусе; тратит лимит, поэтому вызывается только по просьбе пользователя). Ответ содержит трассировку вызовов, а UI показывает, что ассистент сделал. Тексты новостей передаются модели как данные; менять карточки она должна только по явной просьбе пользователя.
 
+### Продуктовая аналитика (Umami)
+
+Действия аналитика пишутся как события в [Umami](https://umami.is) 3.4 — готовую open-source аналитику без cookies. У Umami своя база PostgreSQL в контейнере `events-db` (том `events_data`), отдельная от данных приложения. Браузер получает трекер и отправляет события через frontend: `/stats/script.js` и `/stats/api/send` проксируются в `umami:3000`, так что CSP `'self'` не меняется. Пока `UMAMI_WEBSITE_ID` не задан, `/api/tracking` отдаёт `websiteId: null` и интерфейс ничего не отправляет.
+
+Включение: впишите в `.env` четыре значения и поднимите профиль.
+
+```sh
+uuidgen | tr A-Z a-z    # → UMAMI_WEBSITE_ID
+openssl rand -hex 32    # → UMAMI_APP_SECRET
+# UMAMI_ADMIN_PASSWORD — пароль дашборда, от 8 символов; UMAMI_DB_PASSWORD — пароль events-db
+docker compose --profile analytics up -d --build
+```
+
+Разовый сервис `umami-init` меняет стандартный пароль `admin`/`umami` на `UMAMI_ADMIN_PASSWORD` и создаёт сайт с id `UMAMI_WEBSITE_ID`; повторный запуск ничего не ломает. Дашборд открыт только на сервере: `http://127.0.0.1:18474` (`UMAMI_BIND`, `UMAMI_PORT`), снаружи — через SSH-туннель `ssh -L 18474:127.0.0.1:18474 сервер`. Чтобы писать события во внешнюю базу вместо `events-db`, задайте `UMAMI_DATABASE_URL`.
+
+**Доступ к дашборду из локальной сети сервера.** Для сервера `192.168.1.111` добавлен `compose.lan.yaml`: он заменяет привязки порта Umami на конкретный LAN IPv4. Требуется [Docker Compose 2.24.4 или новее](https://docs.docker.com/reference/compose-file/merge/#replace-value). В серверном `.env` задайте:
+
+```dotenv
+UMAMI_LAN_BIND=192.168.1.111
+UMAMI_PORT=18474
+```
+
+Из каталога с серверным `compose.yaml` примените оба файла (путь ко второму файлу укажите по месту его размещения):
+
+```sh
+docker compose -f compose.yaml -f compose.lan.yaml --profile analytics up -d --build --wait
+```
+
+В существующем деплое используйте фактический серверный `compose.yaml`, сохранив его HTTPS, авторизацию и настройки данных. Он должен уже содержать сервисы `umami`, `events-db` и `umami-init` из новой версии. Второй файл задаёт только LAN-привязку дашборда; его нужно указывать и при последующих обновлениях этого деплоя.
+
+На устройстве в той же локальной сети откройте **http://192.168.1.111:18474** и войдите как `admin` с паролем `UMAMI_ADMIN_PASSWORD`. Не добавляйте переадресацию порта `18474` на роутере и маршрут к дашборду в публичном HTTPS-прокси. Существующее правило WAN `443` → `192.168.1.111:18473` обслуживает приложение; сбор событий по `/stats/script.js` и `/stats/api/send` продолжает работать через него. При смене LAN-адреса сервера обновите `UMAMI_LAN_BIND`.
+
+| Событие | Когда | Данные |
+| --- | --- | --- |
+| просмотр страницы | смена раздела (автоматически) | путь |
+| `card_open` / `card_close` | открыта / закрыта карточка | `card`, `origin`, `status`, `risk`, `score`, `sector`; при закрытии ещё `seconds` |
+| `card_decision` | одобрена, отклонена или оставлена на проверке | то же + `decision`, `seconds` от открытия карточки |
+| `card_assign` | сохранён ответственный или следующее действие | `card`, `field` |
+| `risk_check` / `risk_check_failed` | проверка в Контур.Фокусе | `card`, `verdict`, `forced`, `inn` (`card` — ИНН был в карточке, `manual` — введён) |
+| `assistant_open`, `assistant_message`, `assistant_error` | работа с ассистентом | `tools` (вызванные инструменты), `toolCalls`, `changed` |
+| `signal_create` | ручная карточка | `card`, `sector` |
+| `source_collect`, `pipeline_process` | сбор источника и разбор из UI | `source`, `added`, `ok`; счётчики разбора |
+| `export` | выгрузка CSV | `count` |
+
+Под гипотезы спринта 4: «риск-зона ускоряет разбор» — `card_decision.seconds` в разрезе `risk`; «зона риска совпадает с мнением аналитика» — `decision` против `risk`. Свойства событий видны в Umami (Events → свойства) и лежат в таблице `event_data` базы `events-db`.
+
 ## API
 
 Документация: http://localhost:18473/api/docs (после входа).
 
 | Метод | Путь | Назначение |
 | --- | --- | --- |
+| GET | `/api/tracking` | `websiteId` Umami для трекера или `null`, если аналитика выключена |
 | GET | `/api/state` | Карточки, источники, пример аналитики и статистика пайплайна |
 | GET/POST | `/api/candidates` | Список / ручной сигнал |
 | GET/PATCH | `/api/candidates/{id}` | Карточка / status, owner, nextAction; статус экспортированной не меняется (409) |

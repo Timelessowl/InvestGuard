@@ -23,6 +23,7 @@ import { AddSignalDialog } from "../components/AddSignalDialog";
 import { ChatPanel } from "../components/ChatPanel";
 import { Spinner } from "../components/ui";
 import { registerWebMcp } from "../services/webMcp";
+import { track } from "../services/analytics";
 
 const sections = [
   {
@@ -60,6 +61,7 @@ export function Shell() {
     setExporting(true);
     try {
       const result = await mutate(() => api.exportApproved());
+      track("export", { count: result.count });
       const url = URL.createObjectURL(
         new Blob([result.csv], { type: "text/csv;charset=utf-8" }),
       );
@@ -151,7 +153,10 @@ export function Shell() {
             <button
               className="button"
               aria-expanded={chatOpen}
-              onClick={() => setChatOpen((open) => !open)}
+              onClick={() => {
+                if (!chatOpen) track("assistant_open");
+                setChatOpen(!chatOpen);
+              }}
             >
               <Bot size={17} aria-hidden="true" />
               <span>Ассистент</span>
