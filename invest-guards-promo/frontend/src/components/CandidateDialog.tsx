@@ -14,6 +14,7 @@ import {
   type Decision,
 } from "../domain/models";
 import { useApp } from "../app/AppProvider";
+import { cardProps, secondsSince, track } from "../services/analytics";
 import { BarChart, CloseButton, Modal, Spinner, StatusBadge } from "./ui";
 import { RiskBadge, RiskPanel } from "./RiskPanel";
 
@@ -59,6 +60,14 @@ export function CandidateDialog({
   const [pending, setPending] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
+  const openedAt = useRef(Date.now());
+  const latest = useRef(candidate);
+  latest.current = candidate;
+  useEffect(() => {
+    openedAt.current = Date.now();
+    track("card_open", cardProps(latest.current));
+    return () => track("card_close", { ...cardProps(latest.current), seconds: secondsSince(openedAt.current) });
+  }, [candidate.id]);
   useEffect(() => {
     if (rejectConfirm) confirmButton.current?.focus();
   }, [rejectConfirm]);
@@ -73,6 +82,7 @@ export function CandidateDialog({
     setSaveError(null);
     try {
       await mutate(() => api.update(candidate.id, { [field]: value }));
+      track("card_assign", { card: candidate.id, field });
       notify(
         field === "owner"
           ? "Ответственный сохранён"
@@ -93,6 +103,7 @@ export function CandidateDialog({
     setSaveError(null);
     try {
       await mutate(() => api.update(candidate.id, { status }));
+      track("card_decision", { ...cardProps(candidate), decision: status, seconds: secondsSince(openedAt.current) });
       notify(
         status === "approved"
           ? `${candidate.company}: проект одобрен и готов к экспорту`
@@ -169,7 +180,9 @@ export function CandidateDialog({
           <p className="helper">
             {candidate.origin === "ai"
               ? `Оценка GigaChat по ${candidate.evidence.length} ${candidate.evidence.length === 1 ? "источнику" : "источникам"}. Решение принимает эксперт.`
-              : "Предварительная оценка по демо-модели. Решение принимает эксперт."}
+              : candidate.origin === "events"
+                ? "Карточка собрана правилами из событий источников, оценка предварительная. Решение принимает эксперт."
+                : "Предварительная оценка по демо-модели. Решение принимает эксперт."}
           </p>
         </section>
         <section className="detail-section">

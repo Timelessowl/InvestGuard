@@ -1,4 +1,4 @@
-import type { Candidate, CandidateStatus } from "./models";
+import type { Candidate, CandidateStatus, DataSource } from "./models";
 
 export type SortOrder = "score-desc" | "score-asc" | "company";
 export interface QueueFilters {
@@ -66,4 +66,9 @@ export function projectCount(count: number) {
           ? "проекта"
           : "проектов";
   return `${count} ${word}`;
+}
+
+/** A source counts as working only when it is active and actually connected. */
+export function isWorkingSource(source: Pick<DataSource, "status" | "connection">) {
+  return source.status === "active" && source.connection === "ready";
 }

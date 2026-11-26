@@ -1,0 +1,305 @@
+{
+ "status": "200",
+ "request": {
+  "api": "v1"
+ },
+ "meta": {
+  "total": 5,
+  "limit": 100
+ },
+ "results": {
+  "vacancies": [
+   {
+    "vacancy": {
+     "id": "00000000-0000-4000-8000-00000000a001",
+     "source": "Вакансия работодателя",
+     "region": {
+      "region_code": "6600000000000",
+      "name": "Свердловская область"
+     },
+     "company": {
+      "companycode": "1026600000019",
+      "hr-agency": false,
+      "inn": "6609000015",
+      "kpp": "660901001",
+      "name": "ООО \"ТЕСТОВЫЙ ЗАВОД\"",
+      "ogrn": "1026600000019",
+      "url": "https://trudvsem.ru/company/1026600000019",
+      "email": "director@example.org",
+      "site": "https://plant.example.org"
+     },
+     "creation-date": "2026-11-20",
+     "date_modify": "2026-11-24T10:15:00+0300",
+     "salary": "от 60000",
+     "salary_min": 60000,
+     "salary_max": 80000,
+     "job-name": "Наладчик оборудования (м/ж)",
+     "vac_url": "https://trudvsem.ru/vacancy/card/1026600000019/00000000-0000-4000-8000-00000000a001",
+     "employment": "Полная занятость",
+     "schedule": "Полный рабочий день",
+     "duty": "Наладка линии розлива. Резюме: hr.test@example.org, тел. 8 (912) 000-00-00",
+     "requirements": "Опыт от 1 года",
+     "category": {
+      "specialisation": "Производство"
+     },
+     "requirement": {
+      "education": "Среднее профессиональное",
+      "experience": 1
+     },
+     "addresses": {
+      "address": [
+       {
+        "location": "Свердловская область, г Первоуральск, Заводская улица, 1",
+        "lat": "56.83",
+        "lng": "60.60"
+       }
+      ]
+     },
+     "social_protected": "",
+     "contact_list": [
+      {
+       "contact_type": "Телефон",
+       "contact_value": "+7 900 000-00-00"
+      }
+     ],
+     "contact_person": "Тестова Анна Петровна",
+     "work_places": 2,
+     "code_profession": "123456",
+     "currency": "«руб.»"
+    }
+   },
+   {
+    "vacancy": {
+     "id": "00000000-0000-4000-8000-00000000a002",
+     "source": "Вакансия работодателя",
+     "region": {
+      "region_code": "6600000000000",
+      "name": "Свердловская область"
+     },
+     "company": {
+      "companycode": "1026600000020",
+      "hr-agency": false,
+      "inn": "6609000029",
+      "kpp": "660901001",
+      "name": "АО \"ОПЫТНОЕ\"",
+      "ogrn": "1026600000020",
+      "url": "https://trudvsem.ru/company/1026600000020",
+      "email": "opyt@example.org",
+      "site": "kadry.opyt@example.org, тел. 8 (343) 000-00-00"
+     },
+     "creation-date": "2026-11-20",
+     "date_modify": "2026-11-24T10:15:00+0300",
+     "salary": "от 60000",
+     "salary_min": 60000,
+     "salary_max": 80000,
+     "job-name": "Инженер-технолог",
+     "vac_url": "https://trudvsem.ru/vacancy/card/1026600000020/00000000-0000-4000-8000-00000000a002",
+     "employment": "Полная занятость",
+     "schedule": "Полный рабочий день",
+     "duty": "Наладка линии розлива. Резюме: hr.test@example.org, тел. 8 (912) 000-00-00",
+     "requirements": "Опыт от 1 года",
+     "category": {
+      "specialisation": "Производство"
+     },
+     "requirement": {
+      "education": "Среднее профессиональное",
+      "experience": 1
+     },
+     "addresses": {
+      "address": [
+       {
+        "location": "Свердловская область, Режевский район, г Реж, Ленина улица, 2, тел. 8 (34364) 0-00-00",
+        "lat": "56.83",
+        "lng": "60.60"
+       }
+      ]
+     },
+     "social_protected": "",
+     "contact_list": [
+      {
+       "contact_type": "Телефон",
+       "contact_value": "+7 900 000-00-00"
+      }
+     ],
+     "contact_person": "Тестова Анна Петровна",
+     "work_places": 1,
+     "code_profession": "123456",
+     "currency": "«руб.»"
+    }
+   },
+   {
+    "vacancy": {
+     "id": "00000000-0000-4000-8000-00000000a003",
+     "source": "Вакансия работодателя",
+     "region": {
+      "region_code": "6600000000000",
+      "name": "Свердловская область"
+     },
+     "company": {
+      "companycode": "0b1f0c7e-0000-4000-8000-000000000001",
+      "hr-agency": false,
+      "inn": "",
+      "kpp": "",
+      "name": "ИП ТЕСТОВ Т. Т.",
+      "ogrn": "",
+      "url": "https://trudvsem.ru/company/0b1f0c7e-0000-4000-8000-000000000001"
+     },
+     "creation-date": "2026-11-20",
+     "date_modify": "2026-11-24T10:15:00+0300",
+     "salary": "от 60000",
+     "salary_min": 60000,
+     "salary_max": 80000,
+     "job-name": "Оператор линии",
+     "vac_url": "https://trudvsem.ru/vacancy/card/0b1f0c7e-0000-4000-8000-000000000001/00000000-0000-4000-8000-00000000a003",
+     "employment": "Полная занятость",
+     "schedule": "Полный рабочий день",
+     "duty": "Наладка линии розлива. Резюме: hr.test@example.org, тел. 8 (912) 000-00-00",
+     "requirements": "Опыт от 1 года",
+     "category": {
+      "specialisation": "Производство"
+     },
+     "requirement": {
+      "education": "Среднее профессиональное",
+      "experience": 1
+     },
+     "addresses": {
+      "address": [
+       {
+        "location": "Свердловская область, Артинский район, Арти поселок городского типа, Ленина улица, 3",
+        "lat": "",
+        "lng": ""
+       }
+      ]
+     },
+     "social_protected": "",
+     "contact_list": [
+      {
+       "contact_type": "Телефон",
+       "contact_value": "+7 900 000-00-00"
+      }
+     ],
+     "contact_person": "Тестова Анна Петровна",
+     "work_places": 1,
+     "code_profession": "123456",
+     "currency": "«руб.»"
+    }
+   },
+   {
+    "vacancy": {
+     "id": "00000000-0000-4000-8000-00000000a004",
+     "source": "Вакансия работодателя",
+     "region": {
+      "region_code": "7400000000000",
+      "name": "Челябинская область"
+     },
+     "company": {
+      "companycode": "1027400000033",
+      "hr-agency": false,
+      "inn": "7409000034",
+      "kpp": "740901001",
+      "name": "ООО \"СОСЕДИ\"",
+      "ogrn": "1027400000033",
+      "url": "https://trudvsem.ru/company/x"
+     },
+     "creation-date": "2026-11-20",
+     "date_modify": "2026-11-24T10:15:00+0300",
+     "salary": "от 60000",
+     "salary_min": 60000,
+     "salary_max": 80000,
+     "job-name": "Сварщик",
+     "vac_url": "https://trudvsem.ru/vacancy/card/1027400000033/00000000-0000-4000-8000-00000000a004",
+     "employment": "Полная занятость",
+     "schedule": "Полный рабочий день",
+     "duty": "Наладка линии розлива. Резюме: hr.test@example.org, тел. 8 (912) 000-00-00",
+     "requirements": "Опыт от 1 года",
+     "category": {
+      "specialisation": "Производство"
+     },
+     "requirement": {
+      "education": "Среднее профессиональное",
+      "experience": 1
+     },
+     "addresses": {
+      "address": [
+       {
+        "location": "Челябинская область, г Челябинск, Победы проспект, 4",
+        "lat": "56.83",
+        "lng": "60.60"
+       }
+      ]
+     },
+     "social_protected": "",
+     "contact_list": [
+      {
+       "contact_type": "Телефон",
+       "contact_value": "+7 900 000-00-00"
+      }
+     ],
+     "contact_person": "Тестова Анна Петровна",
+     "work_places": 2,
+     "code_profession": "123456",
+     "currency": "«руб.»"
+    }
+   },
+   {
+    "vacancy": {
+     "id": "00000000-0000-4000-8000-00000000a005",
+     "source": "Вакансия интернет ресурса",
+     "region": {
+      "region_code": "6600000000000",
+      "name": "Свердловская область"
+     },
+     "company": {
+      "companycode": "1026600000019",
+      "hr-agency": false,
+      "inn": "6609000015",
+      "kpp": "660901001",
+      "name": "ООО \"ТЕСТОВЫЙ ЗАВОД\"",
+      "ogrn": "1026600000019",
+      "url": "https://trudvsem.ru/company/1026600000019",
+      "email": "director@example.org",
+      "site": "https://plant.example.org"
+     },
+     "creation-date": "2026-11-20",
+     "date_modify": "2026-11-24T10:15:00+0300",
+     "salary": "от 60000",
+     "salary_min": 60000,
+     "salary_max": 80000,
+     "job-name": "Наладчик оборудования",
+     "vac_url": "https://trudvsem.ru/vacancy/card/1026600000019/00000000-0000-4000-8000-00000000a005",
+     "employment": "Полная занятость",
+     "schedule": "Полный рабочий день",
+     "duty": "Наладка линии розлива. Резюме: hr.test@example.org, тел. 8 (912) 000-00-00",
+     "requirements": "Опыт от 1 года",
+     "category": {
+      "specialisation": "Производство"
+     },
+     "requirement": {
+      "education": "Среднее профессиональное",
+      "experience": 1
+     },
+     "addresses": {
+      "address": [
+       {
+        "location": "Свердловская область, г Первоуральск, Заводская улица, 1",
+        "lat": "56.83",
+        "lng": "60.60"
+       }
+      ]
+     },
+     "social_protected": "",
+     "contact_list": [
+      {
+       "contact_type": "Телефон",
+       "contact_value": "+7 900 000-00-00"
+      }
+     ],
+     "contact_person": "Тестова Анна Петровна",
+     "work_places": 2,
+     "code_profession": "123456",
+     "currency": "«руб.»"
+    }
+   }
+  ]
+ }
+}

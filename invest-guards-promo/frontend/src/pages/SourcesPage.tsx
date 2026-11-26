@@ -8,14 +8,21 @@ import {
   ExternalLink,
   Play,
   Database,
+  CircleSlash,
+  PlugZap,
 } from "lucide-react";
 import { useApp } from "../app/AppProvider";
+import { track } from "../services/analytics";
 import {
+  connectionLabels,
   documentStageLabels,
   documentStages,
+  sourceStatusLabels,
   type CollectedDocument,
+  type DataSource,
   type DocumentStage,
 } from "../domain/models";
+import { isWorkingSource } from "../domain/selectors";
 import { Panel, Spinner, StatCard, BarChart } from "../components/ui";
 
 const stageBadge: Record<DocumentStage, string> = {
@@ -26,9 +33,30 @@ const stageBadge: Record<DocumentStage, string> = {
   merged: "status-review",
   error: "status-rejected",
 };
+function SourceHealth({ source }: { source: DataSource }) {
+  // A source that is not connected is never shown as working.
+  const label =
+    source.status !== "disabled" && source.connection !== "ready"
+      ? connectionLabels[source.connection]
+      : sourceStatusLabels[source.status];
+  const tone = isWorkingSource(source) ? "health-active" : source.status === "retry" ? "health-warning" : "health-muted";
+  return (
+    <span className={`source-health ${tone}`}>
+      {isWorkingSource(source) ? (
+        <CircleCheck size={15} aria-hidden="true" />
+      ) : source.status === "retry" ? (
+        <TriangleAlert size={15} aria-hidden="true" />
+      ) : (
+        <CircleSlash size={15} aria-hidden="true" />
+      )}
+      {label}
+    </span>
+  );
+}
 export default function SourcesPage() {
   const { sources, pipeline, api, mutate, busy, notify } = useApp();
   const [collecting, setCollecting] = useState<string | null>(null);
+  const [checking, setChecking] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [stage, setStage] = useState<DocumentStage | "all">("all");
   const [documents, setDocuments] = useState<CollectedDocument[] | null>(null);
@@ -37,7 +65,7 @@ export default function SourcesPage() {
   const usage = pipeline?.usage;
   const totalDocuments = Object.values(stages).reduce((sum, value) => sum + value, 0);
   const signals = (stages.signal ?? 0) + (stages.merged ?? 0);
-  const active = sources.filter((source) => source.status === "active").length;
+  const active = sources.filter(isWorkingSource).length;
   const sourceNames = Object.fromEntries(sources.map((source) => [source.id, source.name]));
   useEffect(() => {
     let current = true;
@@ -59,11 +87,15 @@ export default function SourcesPage() {
     setCollecting(id);
     try {
       const result = await mutate(() => api.collectSource(id));
+      const ok = result.queued || result.source.status === "active";
+      track("source_collect", { source: id, added: result.added, ok });
       notify(
-        result.source.status === "active"
-          ? `${result.source.name}: новых документов — ${result.added}`
-          : `${result.source.name}: сбор не удался (${result.source.lastError ?? "ошибка"})`,
-        result.source.status === "active" ? "success" : "error",
+        result.queued
+          ? `${result.source.name}: сбор поставлен в очередь, данные появятся после выгрузки`
+          : result.source.status === "active"
+            ? `${result.source.name}: новых ${result.source.produces === "events" ? "событий" : "документов"} — ${result.added}`
+            : `${result.source.name}: сбор не удался (${result.source.lastError ?? "ошибка"})`,
+        ok ? "success" : "error",
       );
     } catch {
       /* Error is announced by provider. */
@@ -71,10 +103,25 @@ export default function SourcesPage() {
       setCollecting(null);
     }
   }
+  async function check(id: string, name: string) {
+    setChecking(id);
+    try {
+      const result = await mutate(() => api.checkSource(id));
+      notify(`${name}: ${result.message}`, result.ok ? "success" : "error");
+    } catch {
+      /* Error is announced by provider. */
+    } finally {
+      setChecking(null);
+    }
+  }
   async function process() {
     setProcessing(true);
     try {
       const result = await mutate(() => api.processPending(10));
+      track("pipeline_process", {
+        processed: result.processed, signal: result.signal, merged: result.merged,
+        rejected: result.rejected, skipped: result.skipped, error: result.error,
+      });
       notify(
         result.stopped
           ? result.stopped
@@ -143,21 +190,58 @@ export default function SourcesPage() {
                       {source.kind === "dzen" && " · поиск через браузер, фильтр кликбейта"}
                     </p>
                   </div>
-                  <span className={`source-health ${source.status === "active" ? "health-active" : "health-warning"}`}>
-                    {source.status === "active" ? (
-                      <CircleCheck size={15} aria-hidden="true" />
-                    ) : (
-                      <TriangleAlert size={15} aria-hidden="true" />
-                    )}
-                    {source.status === "active" ? "Работает" : "Нужен повтор"}
-                  </span>
+                  <SourceHealth source={source} />
                 </div>
                 <div className="source-details">
-                  <span>{source.documents} документов</span>
-                  <span>{source.signals} сигналов</span>
+                  {source.hiring && source.kind !== "derived" ? (
+                    <>
+                      <span>
+                        {source.hiring.vacancies} вакансий, актуальных {source.hiring.activeVacancies}
+                      </span>
+                      <span>{source.hiring.employers} работодателей</span>
+                      <span>Кадровых сигналов: {source.hiring.signals}</span>
+                    </>
+                  ) : source.hiring ? (
+                    <>
+                      <span>
+                        Кадровых сигналов: {source.hiring.signals}, действующих {source.hiring.activeSignals}
+                      </span>
+                      <span>{source.eventSignals} связано с карточками</span>
+                    </>
+                  ) : source.produces === "events" ? (
+                    <>
+                      <span>{source.events} событий</span>
+                      <span>{source.eventSignals} связано с карточками</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{source.documents} документов</span>
+                      <span>{source.signals} сигналов</span>
+                    </>
+                  )}
                   <span>Последний сбор: {source.lastRun}</span>
-                  {source.lastError && <span className="source-error">Ошибка: {source.lastError}</span>}
-                  <button className="button button-small" disabled={busy} onClick={() => void collect(source.id)}>
+                  {source.errors7d > 0 && <span>Ошибок за 7 дней: {source.errors7d}</span>}
+                  {source.lastError && (
+                    <span className={source.status === "retry" ? "source-error" : undefined}>
+                      {source.status === "retry" ? "Ошибка: " : ""}
+                      {source.lastError}
+                    </span>
+                  )}
+                  {source.produces === "events" && (
+                    <button
+                      className="button button-small"
+                      disabled={busy || source.connection === "manual_only"}
+                      onClick={() => void check(source.id, source.name)}
+                    >
+                      {checking === source.id ? <Spinner /> : <PlugZap size={16} aria-hidden="true" />}
+                      Проверить
+                    </button>
+                  )}
+                  <button
+                    className="button button-small"
+                    disabled={busy || source.status === "disabled" || source.status === "not_configured" || source.connection === "manual_only"}
+                    onClick={() => void collect(source.id)}
+                  >
                     {collecting === source.id ? <Spinner /> : <RotateCw size={16} aria-hidden="true" />}
                     Собрать сейчас
                   </button>
