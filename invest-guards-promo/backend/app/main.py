@@ -17,7 +17,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from . import events, service
+from . import events, service, umami
 from .agent import Agent
 from .auth import AuthSettings
 from .collectors import collect_source
@@ -241,6 +241,10 @@ def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_
         agent = Agent(request.app.state.sessions, request.app.state.llm, request.app.state.http, request.app.state.focus)
         reply, trace, changed = agent.run(input.messages)
         return ChatReply(reply=reply, trace=trace, changed=changed)
+
+    @app.get('/api/tracking', description='Настройки продуктовой аналитики (Umami) для интерфейса.')
+    def tracking():
+        return {'websiteId': umami.website_id()}
 
     @app.get('/api/analytics', response_model=PilotAnalytics,
              description='Fixed sample pilot metrics, not measured performance.')
