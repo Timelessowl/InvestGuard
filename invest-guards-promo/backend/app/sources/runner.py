@@ -74,6 +74,9 @@ def write_batch(db, source_id, batch, stats):
         stats['fetched'] += len(batch.events)
         for key, value in upsert_events(db, source_id, batch.events).items():
             stats[key] += value
+    if batch.rejected:
+        stats['fetched'] += batch.rejected
+        stats['rejected'] += batch.rejected
 
 
 def start_run(db, source_id, trigger):
@@ -133,6 +136,7 @@ def _run(db, source_id, payload, http, trigger):
             # Saved with the first batch; a run that fails before it leaves the start to the next run.
             if state.snapshot_started_at is None:
                 state.snapshot_started_at = run.started_at
+            completed = False
             for batch in adapter.fetch(state.sync_cursor):
                 write_batch(db, source_id, batch, stats)
                 if batch.cursor is not None:
@@ -145,7 +149,12 @@ def _run(db, source_id, payload, http, trigger):
                 if batch.snapshot_complete:
                     adapter.snapshot_finished(db, state.snapshot_started_at or run.started_at)
                     state.snapshot_started_at = None
+                    completed = True
                     db.commit()
+            if not completed and state.snapshot_started_at is not None:
+                # A finished run without a full export was incremental: the next full export starts afresh.
+                state.snapshot_started_at = None
+                db.commit()
     except LookupError as failure:
         db.rollback()
         status, error, kind, retryable = 'error', str(failure), 'config', False

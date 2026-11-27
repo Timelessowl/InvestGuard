@@ -117,6 +117,8 @@ class Linker:
             return self.finish(event, 'context', 'Контекстное событие: компания не привязывается')
         if not event.inn:
             reason = 'Есть только ОГРН: карточки сопоставляются по ИНН' if event.ogrn else 'Нет идентификатора юрлица (ИНН или ОГРН)'
+            if not event.ogrn and event.source_company_id:
+                reason = f'Работодатель известен только по ID в источнике ({event.source_company_id}): нужно сопоставить с юрлицом'
             return self.finish(event, 'review', reason)
         records = list(self.db.scalars(select(CandidateRecord).where(CandidateRecord.inn_key == event.inn)
                                        .order_by(CandidateRecord.number).with_for_update()))

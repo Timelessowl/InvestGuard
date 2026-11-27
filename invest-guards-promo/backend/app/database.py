@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import BigInteger, Boolean, Computed, Date, DateTime, Float, ForeignKey, Integer, Numeric, Text, URL, create_engine, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from .common import schedule_label
@@ -155,6 +155,65 @@ class SourceRunRecord(Base):
     error: Mapped[str | None] = mapped_column(Text)
 
 
+class VacancyEmployerRecord(Base):
+    __tablename__ = 'vacancy_employers'
+    employer_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    inn: Mapped[str | None] = mapped_column(Text)
+    ogrn: Mapped[str | None] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(Text)
+    hr_agency: Mapped[bool] = mapped_column(Boolean, server_default=text('false'))
+    source_ids: Mapped[list] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text('now()'))
+    excluded_reason: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text('now()'))
+
+
+class VacancyDetailRecord(Base):
+    __tablename__ = 'vacancy_details'
+    event_id: Mapped[int] = mapped_column(BigInteger, ForeignKey('source_events.id'), primary_key=True)
+    source_id: Mapped[str] = mapped_column(Text)
+    employer_key: Mapped[str] = mapped_column(Text, ForeignKey('vacancy_employers.employer_key'))
+    source_employer_id: Mapped[str | None] = mapped_column(Text)
+    title_norm: Mapped[str] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(Text)
+    profile: Mapped[str] = mapped_column(Text, server_default=text("'other'"))
+    profession_code: Mapped[str | None] = mapped_column(Text)
+    specialisation: Mapped[str | None] = mapped_column(Text)
+    municipality: Mapped[str | None] = mapped_column(Text)
+    work_places: Mapped[int | None] = mapped_column(Integer)
+    salary_min: Mapped[Decimal | None] = mapped_column(Numeric)
+    salary_max: Mapped[Decimal | None] = mapped_column(Numeric)
+    currency: Mapped[str | None] = mapped_column(Text)
+    employment: Mapped[str | None] = mapped_column(Text)
+    schedule: Mapped[str | None] = mapped_column(Text)
+    syndicated: Mapped[bool] = mapped_column(Boolean, server_default=text('false'))
+    published_at: Mapped[date | None] = mapped_column(Date)
+    modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text('now()'))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text('now()'))
+    fingerprint: Mapped[str] = mapped_column(Text)
+    duplicate_of: Mapped[int | None] = mapped_column(BigInteger, ForeignKey('vacancy_details.event_id'))
+
+
+class VacancySnapshotRecord(Base):
+    __tablename__ = 'vacancy_employer_snapshots'
+    employer_key: Mapped[str] = mapped_column(Text, ForeignKey('vacancy_employers.employer_key'), primary_key=True)
+    snapshot_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    active_count: Mapped[int] = mapped_column(Integer)
+    active_work_places: Mapped[int] = mapped_column(Integer)
+    new_30d: Mapped[int] = mapped_column(Integer)
+    new_30d_work_places: Mapped[int] = mapped_column(Integer, server_default=text('0'))
+    new_90d: Mapped[int] = mapped_column(Integer)
+    production_count: Mapped[int] = mapped_column(Integer)
+    engineering_count: Mapped[int] = mapped_column(Integer)
+    management_count: Mapped[int] = mapped_column(Integer)
+    municipalities: Mapped[list] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
+    new_municipalities: Mapped[list | None] = mapped_column(ARRAY(Text))
+    categories: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+
+
 class MetadataRecord(Base):
     __tablename__ = 'app_metadata'
     key: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -191,6 +250,7 @@ def initialize(engine):
             connection.execute(text('INSERT INTO schema_versions VALUES (:v)'), {'v': migration.name})
         sync_sources(connection)
         sync_event_types(connection)
+        validate_hiring_config()
         seeded = connection.execute(text("SELECT 1 FROM app_metadata WHERE key='demo_seed_v1'")).scalar()
         if seeded:
             return
@@ -225,6 +285,14 @@ def sync_event_types(connection):
             'link_policy = EXCLUDED.link_policy, stage = EXCLUDED.stage, description = EXCLUDED.description, deprecated = false'),
             {**item.model_dump(exclude={'linkPolicy'}), 'policy': item.linkPolicy})
     connection.execute(text('UPDATE event_types SET deprecated = true WHERE NOT (code = ANY(:codes))'), {'codes': [t.code for t in types]})
+
+
+def validate_hiring_config():
+    # A broken category dictionary or threshold file stops startup instead of silently skipping signals.
+    from .vacancies.categories import load_book
+    from .vacancies.signals import load_rules
+    load_book()
+    load_rules()
 
 
 def insert_candidate(db, candidate):
