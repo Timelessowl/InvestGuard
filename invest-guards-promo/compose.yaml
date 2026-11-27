@@ -19,6 +19,7 @@ x-backend-env: &backend-env
   FOCUS_API_KEY: ${FOCUS_API_KEY:-}
   FOCUS_INN_LIMIT: ${FOCUS_INN_LIMIT:-950}
   FOCUS_AUTO_CHECK: ${FOCUS_AUTO_CHECK:-1}
+  UMAMI_WEBSITE_ID: ${UMAMI_WEBSITE_ID:-}
   SOURCE_KINDS: rss
   # The scheduler runs in the worker service, not a second time inside the API.
   PIPELINE_WORKER: "0"
@@ -112,6 +113,67 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  # Product analytics (Umami) with its own database; opt in with `docker compose --profile analytics up -d`.
+  umami:
+    image: ghcr.io/umami-software/umami:3.4.1
+    init: true
+    profiles: ["analytics"]
+    environment:
+      DATABASE_URL: ${UMAMI_DATABASE_URL:-postgresql://umami:${UMAMI_DB_PASSWORD:-umami_demo}@events-db:5432/umami}
+      APP_SECRET: ${UMAMI_APP_SECRET:-}
+      DISABLE_TELEMETRY: "1"
+    ports:
+      # Dashboard; the tracker and /api/send are served to browsers through the frontend at /stats/.
+      - "${UMAMI_BIND:-127.0.0.1}:${UMAMI_PORT:-18474}:3000"
+    depends_on:
+      events-db:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/heartbeat || curl -fs http://127.0.0.1:3000/api/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+
+  events-db:
+    image: postgres:17-alpine
+    profiles: ["analytics"]
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: ${UMAMI_DB_PASSWORD:-umami_demo}
+    volumes:
+      - events_data:/var/lib/postgresql/data
+    command: ["postgres", "-c", "max_connections=30", "-c", "shared_buffers=32MB"]
+    restart: unless-stopped
+    logging: *logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami -d umami"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot: sets the admin password and creates the website with UMAMI_WEBSITE_ID.
+  umami-init:
+    image: invest-signal-backend:local
+    profiles: ["analytics"]
+    command: ["python", "-m", "app.umami"]
+    environment:
+      UMAMI_URL: http://umami:3000
+      UMAMI_WEBSITE_ID: ${UMAMI_WEBSITE_ID:-}
+      UMAMI_ADMIN_PASSWORD: ${UMAMI_ADMIN_PASSWORD:-}
+      UMAMI_APP_SECRET: ${UMAMI_APP_SECRET:-}
+      UMAMI_DOMAIN: ${UMAMI_DOMAIN:-localhost}
+    depends_on:
+      umami:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    restart: "no"
+    logging: *logging
+
   db:
     image: postgres:17-alpine
     environment:
@@ -131,3 +193,4 @@ services:
 
 volumes:
   postgres_data:
+  events_data:
