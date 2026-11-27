@@ -1,0 +1,10 @@
+# Server LAN dashboard: docker compose -f compose.yaml -f compose.lan.yaml --profile analytics up -d --build --wait
+# Requires Docker Compose >= 2.24.4 for !override. Keep port 18474 off router port forwards and public proxies.
+services:
+  umami:
+    # Replace every inherited dashboard binding, including any wildcard/public address.
+    ports: !override
+      - target: 3000
+        published: "${UMAMI_PORT:-18474}"
+        host_ip: "${UMAMI_LAN_BIND:-192.168.1.111}"
+        protocol: tcp

@@ -12,6 +12,7 @@ import {
   PlugZap,
 } from "lucide-react";
 import { useApp } from "../app/AppProvider";
+import { track } from "../services/analytics";
 import {
   connectionLabels,
   documentStageLabels,
@@ -86,6 +87,7 @@ export default function SourcesPage() {
     setCollecting(id);
     try {
       const result = await mutate(() => api.collectSource(id));
+      track("source_collect", { source: id, added: result.added, ok: result.source.status === "active" });
       notify(
         result.queued
           ? `${result.source.name}: сбор поставлен в очередь, данные появятся после выгрузки`
@@ -115,6 +117,10 @@ export default function SourcesPage() {
     setProcessing(true);
     try {
       const result = await mutate(() => api.processPending(10));
+      track("pipeline_process", {
+        processed: result.processed, signal: result.signal, merged: result.merged,
+        rejected: result.rejected, skipped: result.skipped, error: result.error,
+      });
       notify(
         result.stopped
           ? result.stopped
