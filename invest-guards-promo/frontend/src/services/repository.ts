@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
-  candidateSchema, chatReplySchema, documentSchema, newSignalSchema, processResultSchema, sourceSchema, stateSchema,
-  type Candidate, type ChatMessage, type ChatReply, type CollectedDocument, type DataSource, type DocumentStage,
-  type NewSignal, type ProcessResult, type WorkspaceState,
+  candidateSchema, chatReplySchema, collectResultSchema, documentSchema, eventDetailSchema, eventPageSchema, eventSchema,
+  eventTypeSchema, newSignalSchema, processResultSchema, sourceCheckSchema, sourceRunSchema, stateSchema,
+  type Candidate, type ChatMessage, type ChatReply, type CollectResult, type CollectedDocument, type DocumentStage,
+  type EventFilters, type EventPage, type EventType, type NewSignal, type ProcessResult, type SourceCheck, type SourceEvent,
+  type SourceEventDetail, type SourceRun, type WorkspaceState,
 } from "../domain/models";
 
 export type CandidatePatch = Partial<Pick<Candidate, "status" | "owner" | "nextAction">>;
@@ -11,7 +13,14 @@ export interface InvestmentRepository {
   create(input: NewSignal): Promise<Candidate>;
   update(id: string, patch: CandidatePatch): Promise<Candidate>;
   exportApproved(): Promise<{ csv: string; count: number; exportId: string }>;
-  collectSource(id: string): Promise<{ source: DataSource; added: number }>;
+  /** News feeds are collected at once; event sources answer queued: true and the worker collects them. */
+  collectSource(id: string): Promise<CollectResult>;
+  checkSource(id: string): Promise<SourceCheck>;
+  sourceRuns(id: string): Promise<SourceRun[]>;
+  events(filters?: EventFilters): Promise<EventPage>;
+  event(id: number): Promise<SourceEventDetail>;
+  candidateEvents(id: string): Promise<SourceEvent[]>;
+  eventTypes(): Promise<EventType[]>;
   processPending(limit: number): Promise<ProcessResult>;
   documents(stage?: DocumentStage): Promise<CollectedDocument[]>;
   chat(messages: ChatMessage[]): Promise<ChatReply>;
@@ -60,7 +69,25 @@ export class HttpInvestmentRepository implements InvestmentRepository {
     return this.request("/exports", z.object({ csv: z.string(), count: z.number().int().positive(), exportId: z.string() }), "POST");
   }
   collectSource(id: string) {
-    return this.request(`/sources/${encodeURIComponent(id)}/collect`, z.object({ source: sourceSchema, added: z.number() }), "POST", undefined, 30000);
+    return this.request(`/sources/${encodeURIComponent(id)}/collect`, collectResultSchema, "POST", undefined, 30000);
+  }
+  checkSource(id: string) {
+    return this.request(`/sources/${encodeURIComponent(id)}/check`, sourceCheckSchema, "POST", undefined, 20000);
+  }
+  sourceRuns(id: string) {
+    return this.request(`/sources/${encodeURIComponent(id)}/runs`, sourceRunSchema.array());
+  }
+  events(filters: EventFilters = {}) {
+    return this.request(`/events${eventQuery(filters)}`, eventPageSchema);
+  }
+  event(id: number) {
+    return this.request(`/events/${encodeURIComponent(String(id))}`, eventDetailSchema);
+  }
+  candidateEvents(id: string) {
+    return this.request(`/candidates/${encodeURIComponent(id)}/events`, eventSchema.array());
+  }
+  eventTypes() {
+    return this.request("/event-types", eventTypeSchema.array());
   }
   processPending(limit: number) {
     return this.request("/pipeline/process", processResultSchema, "POST", { limit }, 120000);
@@ -86,6 +113,21 @@ export class HttpInvestmentRepository implements InvestmentRepository {
       document.removeEventListener("visibilitychange", refresh);
     };
   }
+}
+
+export function eventQuery(filters: EventFilters) {
+  const params = new URLSearchParams();
+  for (const type of filters.type ?? []) params.append("type", type);
+  const single: Record<string, string | number | undefined> = {
+    inn: filters.inn, company: filters.company, municipality: filters.municipality, source: filters.source,
+    processing: filters.processing, candidate: filters.candidate, date_from: filters.dateFrom, date_to: filters.dateTo,
+    limit: filters.limit, offset: filters.offset,
+  };
+  for (const [key, value] of Object.entries(single)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 export const repository: InvestmentRepository = new HttpInvestmentRepository();

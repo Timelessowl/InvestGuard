@@ -4,12 +4,12 @@ import logging
 import os
 import re
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -18,16 +18,19 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from . import service, umami
+from . import events, service
 from .agent import Agent
 from .auth import AuthSettings
 from .collectors import collect_source
+from .sources.runner import check_source, last_runs, request_run
 from .focus import FocusClient, FocusError, FocusInputError, FocusLimitExceeded
 from .database import CandidateRecord, ExportRecord, MetadataRecord, initialize, make_engine, session_factory
 from .llm import BudgetExceeded, LlmClient, LlmError
 from .net import http_client
 from .pipeline import process_pending, stage_counts
-from .schemas import (Candidate, CandidatePatch, ChatReply, ChatRequest, DataSource, DocumentOut, ExportResult, FocusUsage, LlmUsage,
-                      NewSignal, PilotAnalytics, RiskCheckRequest, State)
+from .schemas import (Candidate, CandidatePatch, ChatReply, ChatRequest, CollectResult, DataSource, DocumentOut, EventDetail, EventOut,
+                      EventPage, EventType, ExportResult, FocusUsage, LlmUsage, NewSignal, PilotAnalytics, ProcessingStatus,
+                      RiskCheckRequest, SourceCheck, SourceRun, State)
 from .worker import start_background
 
 log = logging.getLogger(__name__)
@@ -165,14 +168,59 @@ def create_app(database_url=None, llm_transport=None, fetch_transport=None, llm_
     def sources(db: Session = Depends(session)):
         return service.list_sources(db)
 
-    @app.post('/api/sources/{source_id}/collect', description='Скачивает ленту источника и сохраняет новые документы.')
+    @app.post('/api/sources/{source_id}/collect', response_model=CollectResult,
+              description='Новостной источник собирается сразу. Источник событий ставится в очередь worker: полная выгрузка '
+                          'идёт минутами и не укладывается в таймаут запроса.')
     def collect(source_id: str, request: Request, db: Session = Depends(session)):
+        source = service.get_source(db, source_id)
+        if source.produces == 'events':
+            # An events source never fetches inside the HTTP request.
+            if not source.enabled:
+                raise service.Conflict('Источник отключён в настройках, сбор не запускается.')
+            if source.connection == 'no_access':
+                raise service.Conflict('Источник отклонил ключ или доступ: исправьте настройку и нажмите «Проверить».')
+            if source.connection == 'ready':
+                request_run(db, source_id)
+                return CollectResult(source=service.get_source(db, source_id), added=0, queued=True)
+            # Not configured or file-only: the runner only records the reason, without network.
+        _, added = collect_source(db, source_id, request.app.state.http)
+        return CollectResult(source=service.get_source(db, source_id), added=added)
+
+    @app.post('/api/sources/{source_id}/check', response_model=SourceCheck,
+              description='Лёгкая проверка доступности источника, данные не сохраняются.')
+    def check(source_id: str, request: Request, db: Session = Depends(session)):
         try:
-            _, added = collect_source(db, source_id, request.app.state.http)
+            return check_source(db, source_id, request.app.state.http)
         except LookupError:
-            raise HTTPException(404, 'Источник не найден.')
-        source = next(s for s in service.list_sources(db) if s.id == source_id)
-        return {'source': source, 'added': added}
+            raise service.NotFound('Источник не найден.')
+
+    @app.get('/api/sources/{source_id}/runs', response_model=list[SourceRun])
+    def source_runs(source_id: str, limit: int = Query(20, ge=1, le=100), db: Session = Depends(session)):
+        service.get_source(db, source_id)
+        return last_runs(db, source_id, limit)
+
+    @app.get('/api/event-types', response_model=list[EventType])
+    def event_types(db: Session = Depends(session)):
+        return events.event_types(db)
+
+    @app.get('/api/events', response_model=EventPage)
+    def event_list(type: list[str] | None = Query(None, description='Код типа события, можно несколько'),
+                   inn: str | None = Query(None, pattern=r'^(\d{10}|\d{12})$'),
+                   company: str | None = Query(None, max_length=200), municipality: str | None = Query(None, max_length=120),
+                   source: str | None = Query(None, max_length=100), processing: ProcessingStatus | None = None,
+                   candidate: str | None = Query(None, max_length=30), date_from: date | None = None, date_to: date | None = None,
+                   limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0, le=1_000_000), db: Session = Depends(session)):
+        if type and (len(type) > 30 or any(len(t) > 64 for t in type)):
+            raise HTTPException(422, 'Проверьте поля запроса: type — не больше 30 кодов до 64 символов.')
+        return events.list_events(db, type, inn, company, municipality, source, processing, candidate, date_from, date_to, limit, offset)
+
+    @app.get('/api/events/{event_id}', response_model=EventDetail)
+    def event_detail(event_id: int = Path(ge=1, le=2 ** 63 - 1), db: Session = Depends(session)):
+        return events.get_event(db, event_id)
+
+    @app.get('/api/candidates/{candidate_id}/events', response_model=list[EventOut])
+    def candidate_events(candidate_id: str, db: Session = Depends(session)):
+        return events.candidate_events(db, candidate_id)
 
     @app.get('/api/documents', response_model=list[DocumentOut])
     def documents(stage: Literal['new', 'skipped', 'rejected', 'signal', 'merged', 'error'] | None = None,

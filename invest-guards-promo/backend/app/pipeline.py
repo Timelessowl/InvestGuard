@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, text
 
 from . import clickbait
-from .common import display_date, initials, normalize_company, overall_score, urgency_for
+from .common import TZ, display_date, initials, normalize_company, overall_score, urgency_for
 from .database import CandidateRecord, DocumentRecord, SourceRecord, insert_candidate
 from .focus import FocusError, valid_inn
 from .geo import REGION_RE, canonical_municipality, lookup
@@ -70,11 +70,15 @@ SCORE_PROMPT = (
 INN_RE = re.compile(r'\bИНН\D{0,5}(\d{12}|\d{10})\b')
 
 
-def find_inn(*texts):
+def find_inn(model_inn, *texts):
+    """INN from the text; the model's answer counts only when the text contains it."""
+    model_inn = (model_inn or '').strip()
+    if valid_inn(model_inn) and any(re.search(rf'(?<!\d){model_inn}(?!\d)', value or '') for value in texts):
+        return model_inn
     for value in texts:
-        for candidate in [value] + INN_RE.findall(value or ''):
-            if valid_inn((candidate or '').strip()):
-                return candidate.strip()
+        for candidate in INN_RE.findall(value or ''):
+            if valid_inn(candidate):
+                return candidate
     return None
 
 
@@ -106,15 +110,40 @@ def clamp(value):
 
 def evidence_for(doc, source_name, quote=None):
     excerpt = (quote or '').strip() or doc.title
-    return {'source': f'{source_name} · {doc.title[:90]}', 'date': display_date(doc.published_at or doc.collected_at),
-            'excerpt': excerpt[:400], 'highlights': [], 'url': doc.url}
+    moment = doc.published_at or doc.collected_at
+    return {'source': f'{source_name} · {doc.title[:90]}', 'date': display_date(moment),
+            'excerpt': excerpt[:400], 'highlights': [], 'url': doc.url, 'kind': 'document',
+            'occurredAt': moment.astimezone(TZ).date().isoformat()}
+
+
+def detach_evidence(record, event_id):
+    """Removes the evidence of an event that no longer supports the card."""
+    candidate = Candidate.model_validate(record.payload)
+    kept = [e for e in candidate.evidence if e.eventId != event_id]
+    if len(kept) < len(candidate.evidence):
+        candidate.evidence = kept
+        record.payload = candidate.model_dump()
+        record.updated_at = datetime.now(timezone.utc)
+    return candidate
 
 
 def attach_evidence(record, evidence):
     candidate = Candidate.model_validate(record.payload)
+    event_id = evidence.get('eventId')
+    if event_id is not None:
+        # Event evidence is matched by eventId and refreshed when the event changes; no confidence bonus,
+        # independent sources are weighed by lead scoring instead.
+        same = next((i for i, e in enumerate(candidate.evidence) if e.eventId == event_id), None)
+        if same is None:
+            candidate.evidence.append(Evidence.model_validate(evidence))
+        else:
+            candidate.evidence[same] = Evidence.model_validate(evidence)
+        record.payload = candidate.model_dump()
+        record.updated_at = datetime.now(timezone.utc)
+        return candidate
     if any(e.url == evidence['url'] for e in candidate.evidence):
         return candidate
-    new_source = evidence['source'].split(' · ')[0] not in {e.source.split(' · ')[0] for e in candidate.evidence}
+    new_source = evidence['source'].split(' · ')[0] not in {e.source.split(' · ')[0] for e in candidate.evidence if e.kind != 'event'}
     candidate.evidence.append(Evidence.model_validate(evidence))
     if new_source:
         candidate.factors['Уверенность'] = min(100, candidate.factors.get('Уверенность', 50) + 6)

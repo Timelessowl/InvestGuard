@@ -48,3 +48,13 @@ def urgency_for(value):
 def overall_score(factors):
     weights = {'Релевантность': 0.35, 'Уверенность': 0.25, 'Региональный эффект': 0.2, 'Срочность': 0.2}
     return round(sum(factors.get(name, 0) * weight for name, weight in weights.items()))
+
+
+def display_day(day):
+    return f'{day.day} {MONTHS[day.month - 1]} {day.year}'
+
+
+def valid_ogrn(ogrn):
+    if not ogrn or not ogrn.isdigit() or len(ogrn) not in (13, 15):
+        return False
+    return int(ogrn[:-1]) % (11 if len(ogrn) == 13 else 13) % 10 == int(ogrn[-1])
