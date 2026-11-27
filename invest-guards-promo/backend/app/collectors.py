@@ -3,14 +3,10 @@ import html
 import logging
 import re
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime
 
-import httpx
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
-
-from .common import TZ, display_date
-from .database import DocumentRecord, SourceRecord
+from .common import TZ
+from .sources.base import SourceError
 
 log = logging.getLogger(__name__)
 NS = {'atom': 'http://www.w3.org/2005/Atom'}
@@ -18,7 +14,7 @@ FULL_TEXT_TAGS = ['{http://news.yandex.ru}full-text', '{http://purl.org/rss/1.0/
 MAX_BODY = 6000
 
 
-class CollectError(Exception):
+class CollectError(SourceError):
     pass
 
 
@@ -95,36 +91,13 @@ def fetch_items(payload, http):
     return parse_feed(response.text)
 
 
-def collect_source(db, source_id, http):
-    record = db.get(SourceRecord, source_id)
-    if not record:
-        raise LookupError(source_id)
-    added, update = 0, {'status': 'active', 'lastError': None}
-    try:
-        items = fetch_items(dict(record.payload), http)
-        if items:
-            result = db.execute(insert(DocumentRecord).values([{'source_id': source_id, **item} for item in items])
-                                .on_conflict_do_nothing(index_elements=['url']).returning(DocumentRecord.id))
-            added = len(result.all())
-    except (httpx.HTTPError, CollectError) as error:
-        message = f'HTTP {error.response.status_code}' if isinstance(error, httpx.HTTPStatusError) else str(error) or type(error).__name__
-        log.warning('Source %s failed: %s', source_id, message)
-        update = {'status': 'retry', 'lastError': message[:300]}
-    # Lock the source row only for the status update, not for a slow fetch.
-    db.refresh(record, with_for_update=True)
-    payload = {**record.payload, **update, 'lastRun': display_date(), 'lastRunAt': datetime.now(timezone.utc).isoformat()}
-    record.payload = payload
-    db.commit()
-    return payload, added
+def collect_source(db, source_id, http, trigger='manual'):
+    """Compatibility wrapper over the source runner: (source payload, new documents)."""
+    from .sources.runner import sync_source
+    run = sync_source(db, source_id, http, trigger)
+    return run['payload'], run['inserted']
 
 
 def due_sources(db, kinds=('rss',)):
-    now = datetime.now(timezone.utc)
-    due = []
-    for record in db.scalars(select(SourceRecord).order_by(SourceRecord.id)):
-        payload = record.payload
-        last = payload.get('lastRunAt')
-        if (payload.get('enabled', True) and payload.get('kind', 'rss') in kinds
-                and (not last or (now - datetime.fromisoformat(last)).total_seconds() >= payload.get('scheduleMinutes', 60) * 60)):
-            due.append(record.id)
-    return due
+    from .sources.runner import due_sources as due
+    return due(db, kinds)

@@ -1,7 +1,7 @@
 """API integration tests use a disposable PostgreSQL database, never the demo database."""
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi.testclient import TestClient
+from conftest import api_client
 
 from app.main import create_app
 
@@ -15,13 +15,13 @@ def test_seed_and_restart_preserve_changes(client):
     assert api.get('/api/health').json()['database'] == 'ok'
     state = api.get('/api/state').json()
     assert len(state['candidates']) == 6
-    assert len(state['sources']) == 19 and {'oblgazeta', 'rbc', 'stroygaz', 'dzen'} <= {s['id'] for s in state['sources']}
+    assert len(state['sources']) == 26 and {'oblgazeta', 'rbc', 'stroygaz', 'dzen', 'dk', 'tass'} <= {s['id'] for s in state['sources']}
     assert next(s for s in state['sources'] if s['id'] == 'dzen')['kind'] == 'dzen'
     assert state['pipeline']['usage']['configured'] is False
     assert state['pilotAnalytics']['confirmationRate'] == '41%'
     assert state['candidates'][0]['location']['precision'] == 'municipality'
     api.patch('/api/candidates/INV-0261', json={'owner': 'М. Орлова', 'status': 'approved'})
-    with TestClient(create_app(url, worker=False)) as restarted:
+    with api_client(create_app(url, worker=False)) as restarted:
         card = restarted.get('/api/candidates/INV-0261').json()
         assert card['owner'] == 'М. Орлова'
         assert card['status'] == 'approved'
@@ -74,3 +74,14 @@ def test_atomic_approved_export_and_repeat_download(client):
     download = api.get('/api/exports/' + exported['exportId'])
     assert download.text == exported['csv']
     assert download.headers['content-type'].startswith('text/csv')
+
+
+def test_auth_required_except_health(database_url):
+    app = create_app(database_url, worker=False)
+    with api_client(app, auth=None) as anonymous:
+        assert anonymous.get('/api/health').status_code == 200
+        for method, path in [('get', '/api/state'), ('get', '/api/candidates'), ('post', '/api/sources/oblgazeta/collect')]:
+            response = getattr(anonymous, method)(path)
+            assert response.status_code == 401 and response.headers['www-authenticate'].startswith('Basic')
+    with api_client(app, auth=('poc_user', 'wrong-password')) as wrong:
+        assert wrong.get('/api/state').status_code == 401

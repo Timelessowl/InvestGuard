@@ -1005,6 +1005,9 @@ tbody tr:hover {
 .health-warning {
   color: var(--warning);
 }
+.health-muted {
+  color: var(--text-subtle);
+}
 .source-details {
   display: flex;
   flex-wrap: wrap;

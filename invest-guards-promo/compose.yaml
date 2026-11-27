@@ -19,6 +19,22 @@ x-backend-env: &backend-env
   FOCUS_API_KEY: ${FOCUS_API_KEY:-}
   FOCUS_INN_LIMIT: ${FOCUS_INN_LIMIT:-950}
   FOCUS_AUTO_CHECK: ${FOCUS_AUTO_CHECK:-1}
+  FOCUS_AUTO_CHECK_EVENTS: ${FOCUS_AUTO_CHECK_EVENTS:-0}
+  SOURCE_RETRY_ATTEMPTS: ${SOURCE_RETRY_ATTEMPTS:-3}
+  SOURCE_BACKOFF_BASE_MINUTES: ${SOURCE_BACKOFF_BASE_MINUTES:-5}
+  SOURCE_MAX_RETRY_AFTER: ${SOURCE_MAX_RETRY_AFTER:-300}
+  SOURCE_RUN_STALE_MINUTES: ${SOURCE_RUN_STALE_MINUTES:-60}
+  EVENT_LINK_BATCH: ${EVENT_LINK_BATCH:-200}
+  LINKING_RULES_PATH: ${LINKING_RULES_PATH:-}
+  TRUDVSEM_BASE_URL: ${TRUDVSEM_BASE_URL:-https://opendata.trudvsem.ru/api/v1}
+  TRUDVSEM_REGION_CODE: ${TRUDVSEM_REGION_CODE:-6600000000000}
+  TRUDVSEM_PAGE_DELAY_SECONDS: ${TRUDVSEM_PAGE_DELAY_SECONDS:-0.5}
+  TRUDVSEM_TIMEOUT_SECONDS: ${TRUDVSEM_TIMEOUT_SECONDS:-60}
+  TRUDVSEM_MAX_PAGES: ${TRUDVSEM_MAX_PAGES:-300}
+  TRUDVSEM_FULL_SYNC_DAYS: ${TRUDVSEM_FULL_SYNC_DAYS:-7}
+  TRUDVSEM_OVERLAP_MINUTES: ${TRUDVSEM_OVERLAP_MINUTES:-60}
+  VACANCY_CATEGORIES_PATH: ${VACANCY_CATEGORIES_PATH:-}
+  HIRING_SIGNALS_PATH: ${HIRING_SIGNALS_PATH:-}
   SOURCE_KINDS: rss
   # The scheduler runs in the worker service, not a second time inside the API.
   PIPELINE_WORKER: "0"
@@ -90,6 +106,24 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+
+  # API sources (long paginated exports) and hiring analytics run here, so they do not delay RSS collection and AI processing.
+  collector:
+    image: invest-signal-backend:local
+    init: true
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *backend-env
+      SOURCE_KINDS: trudvsem,hh,torgi,egrz
+      PIPELINE_PROCESS: "0"
+    volumes: *backend-volumes
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
 
   # Dzen search pages are rendered in a headless browser; opt in with `docker compose --profile dzen up -d`.
   dzen:

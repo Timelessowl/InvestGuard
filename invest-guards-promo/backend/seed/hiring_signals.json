@@ -1,0 +1,22 @@
+{
+  "minHistoryDays": 60,
+  "snapshotToleranceDays": 3,
+  "maxBasisVacancies": 50,
+  "massHiring": {
+    "windowDays": 30,
+    "measure": "vacancies",
+    "baselineMultiplier": 3.0,
+    "baselineMonths": 6,
+    "minAbsolute": 5,
+    "noHistoryMinAbsolute": 15,
+    "tiers": [{"maxActive": 10, "minAbsolute": 5}, {"maxActive": 50, "minAbsolute": 12}, {"maxActive": null, "minAbsolute": 30}]
+  },
+  "growth": {"lookbackDays": 90, "minRatio": 1.5, "minDelta": 5},
+  "productionLaunch": {"windowDays": 90, "minDistinctCategories": 3, "requireManagement": true},
+  "newMunicipality": {
+    "profiles": ["production", "engineering", "production_management", "executive"],
+    "minVacancies": 2,
+    "windowDays": 90,
+    "lookbackDays": 365
+  }
+}

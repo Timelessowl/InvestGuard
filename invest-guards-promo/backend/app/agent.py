@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from . import service
 from .collectors import collect_source
+from .sources.runner import request_run
 from .focus import FocusError
 from .common import display_date
 from .llm import LlmError
@@ -36,7 +37,7 @@ def fn(name, description, properties=None, required=None):
 TOOLS = [
     fn('search_candidates', 'Найти карточки инвестпроектов: по тексту (компания, город, отрасль, сигнал), статусу, минимальной оценке.',
        {'query': {'type': 'string'}, 'status': {'type': 'string', 'enum': STATUSES},
-        'min_score': {'type': 'number'}, 'origin': {'type': 'string', 'enum': ['all', 'ai', 'manual', 'demo']},
+        'min_score': {'type': 'number'}, 'origin': {'type': 'string', 'enum': ['all', 'ai', 'manual', 'demo', 'events']},
         'limit': {'type': 'integer'}}),
     fn('get_candidate', 'Полная карточка проекта: оценки, доказательства, рекомендация.', {'id': {'type': 'string'}}, ['id']),
     fn('update_candidate', 'Изменить карточку: статус (review — на проверку, approved — одобрить, rejected — отклонить), ответственного или следующее действие.',
@@ -49,7 +50,8 @@ TOOLS = [
        {'query': {'type': 'string'}, 'stage': {'type': 'string', 'enum': STAGES}, 'source_id': {'type': 'string'},
         'limit': {'type': 'integer'}}),
     fn('pipeline_status', 'Состояние источников, этапы разбора документов и расход бюджета ИИ.'),
-    fn('collect_sources', 'Скачать свежие документы из источников сейчас (все или один source_id).', {'source_id': {'type': 'string'}}),
+    fn('collect_sources', 'Скачать свежие документы из новостных источников сейчас (все или один source_id). '
+       'Источник событий по source_id ставится в очередь сбора.', {'source_id': {'type': 'string'}}),
     fn('process_documents', 'Разобрать и оценить ИИ новые документы (тратит бюджет).', {'limit': {'type': 'integer'}}),
     fn('check_company', 'Проверить компанию-инициатора карточки в Контур.Фокусе по ИНН: банкротство, суды, приставы, блокировки счетов, '
        'достоверность ЕГРЮЛ, владельцы. Возвращает вердикт green/yellow/red и флаги рисков.',
@@ -108,15 +110,24 @@ class Agent:
 
     def collect_sources(self, source_id=None):
         with self.sessions() as db:
-            ids = [source_id] if source_id else [s.id for s in service.list_sources(db)]
+            sources = {s.id: s for s in service.list_sources(db)}
+        # Without an id only news feeds: a chat request must not start a full API export.
+        ids = [source_id] if source_id else [s.id for s in sources.values() if s.produces == 'documents' and s.enabled]
         result = {}
         for sid in ids:
             with self.sessions() as db:
-                try:
-                    payload, added = collect_source(db, sid, self.http)
-                    result[sid] = {'added': added, 'status': payload['status'], 'error': payload.get('lastError')}
-                except LookupError:
+                source = sources.get(sid)
+                if not source:
                     result[sid] = {'error': 'Источник не найден'}
+                elif source.produces == 'events':
+                    if source.connection == 'ready' and source.enabled:
+                        request_run(db, sid)
+                        result[sid] = {'added': 0, 'queued': True, 'status': 'queued'}
+                    else:
+                        result[sid] = {'error': f'Источник не готов к сбору: {source.lastError or source.connection}'}
+                else:
+                    payload, added = collect_source(db, sid, self.http, trigger='assistant')
+                    result[sid] = {'added': added, 'status': payload['status'], 'error': payload.get('lastError')}
         return result
 
     def process_documents(self, limit=5):
