@@ -148,6 +148,15 @@ export const runStatsSchema = z.object({
   error: z.string().nullable().default(null),
 });
 export type RunStats = z.infer<typeof runStatsSchema>;
+// Job sources and hiring analytics; absent for news sources and older backends.
+export const hiringStatsSchema = z.object({
+  vacancies: z.number().default(0),
+  activeVacancies: z.number().default(0),
+  employers: z.number().default(0),
+  signals: z.number().default(0),
+  activeSignals: z.number().default(0),
+});
+export type HiringStats = z.infer<typeof hiringStatsSchema>;
 export const sourceSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -172,6 +181,7 @@ export const sourceSchema = z.object({
     .object({ ok: z.boolean().nullable(), message: z.string().nullable(), checkedAt: z.string() })
     .nullable()
     .default(null),
+  hiring: hiringStatsSchema.nullable().default(null),
   lastRun: z.string(),
   lastError: z.string().nullable().default(null),
   status: z.enum(sourceStatuses).catch("retry"),

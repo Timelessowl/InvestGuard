@@ -81,6 +81,21 @@ describe("/api/state compatibility", () => {
     expect(state.candidates[1].origin).toBe("events");
     expect(state.candidates[1].evidence[0].eventId).toBe(5);
   });
+  it("accepts hiring stats of job sources and keeps them optional", () => {
+    const jobs = {
+      ...oldSource,
+      id: "trudvsem",
+      kind: "trudvsem",
+      group: "hiring",
+      produces: "events",
+      hiring: { vacancies: 16431, activeVacancies: 15800, employers: 2900, signals: 12, activeSignals: 9 },
+    };
+    const partial = { ...oldSource, id: "hiring-signals", kind: "derived", produces: "events", hiring: { signals: 3 } };
+    const state = stateSchema.parse({ candidates: [card], sources: [oldSource, jobs, partial], pilotAnalytics: pilot, pipeline });
+    expect(state.sources[0].hiring).toBeNull();
+    expect(state.sources[1].hiring).toEqual({ vacancies: 16431, activeVacancies: 15800, employers: 2900, signals: 12, activeSignals: 9 });
+    expect(state.sources[2].hiring).toMatchObject({ signals: 3, activeSignals: 0, vacancies: 0 });
+  });
   it("parses event pages and details", () => {
     const event = {
       id: 1, sourceId: "rosseti", externalId: "r-1", type: "engineering_connection", typeTitle: "Заявка на техприсоединение",
