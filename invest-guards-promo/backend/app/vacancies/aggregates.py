@@ -138,10 +138,12 @@ class EmployerView:
         result = []
         for place in sorted({r.municipality for r in self.active_with(rules.profiles) if r.municipality}):
             start = self.episode_start(place, rules.profiles)
-            if start < observed_from or start <= self.as_of - timedelta(days=rules.windowDays):
+            if start <= observed_from or start <= self.as_of - timedelta(days=rules.windowDays):
                 continue
-            earlier = [r for r in self.rows if r.municipality == place and start - timedelta(days=rules.lookbackDays) <= r.day < start]
-            if not earlier:
+            earlier = [r for r in self.rows if r.day < start]
+            if not any(r.municipality != place for r in earlier):
+                continue  # the employer's first place is not a new one: it hired nowhere else before
+            if not any(r.municipality == place and r.day >= start - timedelta(days=rules.lookbackDays) for r in earlier):
                 result.append(place)
         return result
 
